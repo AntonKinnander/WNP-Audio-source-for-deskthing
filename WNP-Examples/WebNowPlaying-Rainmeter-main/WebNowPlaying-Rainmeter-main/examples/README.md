@@ -1,3 +1,0 @@
-# WebNowPlayer
-
-WebNowPlaying example skin
