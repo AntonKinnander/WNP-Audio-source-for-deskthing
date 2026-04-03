@@ -29,8 +29,8 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 02-01: Initialize project (package.json, tsconfig, folder structure)
-- [ ] 02-02: Create manifest.json (audio source type, port 6344)
+- [x] 02-01: Initialize project (package.json, tsconfig, folder structure)
+- [x] 02-02: Create manifest.json (audio source type, port 6344)
 - [ ] 02-03: Set up build configuration (vite, esbuild, deskthing.config.ts)
 
 ### Phase 3: WNP Server
@@ -65,7 +65,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Research | 0/2 | **Plans Created** | 01-01-PLAN.md, 01-02-PLAN.md |
-| 2. Project Setup | 0/3 | **Plans Created** | 02-01-PLAN.md, 02-02-PLAN.md, 02-03-PLAN.md |
+| 2. Project Setup | 2/3 | **In Progress** | 02-01-PLAN.md [DONE], 02-02-PLAN.md [DONE], 02-03-PLAN.md |
 | 3. WNP Server | 0/2 | **Plans Created** | 03-01-PLAN.md, 03-02-PLAN.md |
 | 4. Data Translation | 0/2 | **Plans Created** | 04-01-PLAN.md, 04-02-PLAN.md |
 | 5. Testing | 0/2 | **Plans Created** | 05-01-PLAN.md, 05-02-PLAN.md |

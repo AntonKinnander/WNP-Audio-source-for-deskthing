@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Globe/Browser circle -->
+  <circle cx="256" cy="256" r="200" fill="#1a1a2e" stroke="#4a9eff"/>
+  <ellipse cx="256" cy="256" rx="200" ry="80" fill="none" stroke="#4a9eff" stroke-width="8" opacity="0.5"/>
+  <line x1="56" y1="256" x2="456" y2="256" stroke="#4a9eff" stroke-width="8" opacity="0.5"/>
+  <line x1="256" y1="56" x2="256" y2="456" stroke="#4a9eff" stroke-width="8" opacity="0.5"/>
+
+  <!-- Music note -->
+  <path d="M200 180 L200 320 C200 340 180 360 150 360 C120 360 100 340 100 320 C100 300 120 280 150 280 C165 280 180 285 190 295 L190 180 L340 150 L340 290 C340 310 320 330 290 330 C260 330 240 310 240 290 C240 270 260 250 290 250 C305 250 320 255 330 265 L330 150 L200 180 Z" fill="#ff6b6b" stroke="#ff6b6b" stroke-width="4"/>
+
+  <!-- Sound waves -->
+  <path d="M380 200 Q400 230 380 260" stroke="#4ecdc4" stroke-width="12" stroke-linecap="round" fill="none"/>
+  <path d="M410 170 Q445 230 410 290" stroke="#4ecdc4" stroke-width="12" stroke-linecap="round" fill="none"/>
+  <path d="M440 140 Q490 230 440 320" stroke="#4ecdc4" stroke-width="12" stroke-linecap="round" fill="none"/>
+</svg>

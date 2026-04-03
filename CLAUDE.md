@@ -37,7 +37,8 @@ Browser playing music → WNP Browser Extension → localhost:6344 → Our WNP A
 │   └── [other examples]
 └── Documentation/         # WNP and Deskthing docs
     ├── wnp_docs_combined_2.md
-    └── docs_combined_carthing_2.md
+    ├── docs_combined_carthing_2.md
+    └── WNP-Protocol-Findings.md  # Reverse-engineered WNP protocol research
 ```
 
 ### Key Concepts
@@ -70,11 +71,12 @@ Before implementing, always create a plan using the planning skill. Understand:
 - How WNP protocol works
 - How Deskthing expects data
 
-### 2. Consult NotebookLM WNP Expert
-Use the `notebooklm` skill frequently to query WNP documentation:
+### 2. Consult WNP Documentation
+Use the `notebooklm` skill to query WNP documentation:
 - The expert has comprehensive WNP documentation
 - Documentation may be incomplete, so cross-reference with examples
 - Use for protocol details, message formats, port configuration
+- **Also see:** `Documentation/WNP-Protocol-Findings.md` - Reverse-engineered protocol research with message formats, event types, and communication flow
 
 ### 3. Reference Examples
 When uncertain, spawn a subagent to research:

@@ -1,0 +1,31 @@
+{
+  "id": "wnp-audio-source",
+  "requires": [],
+  "label": "WebNowPlaying Audio Source",
+  "version": "1.0.0",
+  "description": "Displays music metadata from web browsers via WNP protocol",
+  "author": "WNP Audio Source Contributors",
+  "platforms": [
+    "windows",
+    "linux",
+    "mac",
+    "mac64",
+    "macarm",
+    "arm64",
+    "x64"
+  ],
+  "homepage": "https://github.com/itsriprod/deskthing-apps",
+  "postinstall": true,
+  "repository": "https://github.com/itsriprod/deskthing-apps",
+  "template": "base",
+  "tags": [
+    "audiosource"
+  ],
+  "requiredVersions": {
+    "server": ">=0.11.13",
+    "client": ">=0.11.2"
+  },
+  "updateUrl": "https://github.com/itsriprod/deskthing-apps",
+  "port": 6344,
+  "portDescription": "WebNowPlaying adapter port"
+}

@@ -1,333 +1,554 @@
 # WNP to Deskthing Data Mapping
 
-This document maps WebNowPlaying (WNP) protocol data and controls to Deskthing's SongData11 format and AUDIO_REQUESTS.
+This document provides a comprehensive reference for mapping WebNowPlaying (WNP) protocol data to Deskthing's SongData11 format, including data type conversions, state mappings, and edge case handling.
 
-## Overview
+**Purpose:** Reference document for implementing WNP → SongData11 data translation.
 
-**Data Flow:**
-```
-Browser Extension → WNP Protocol (localhost:6344) → Our Adapter → Deskthing SDK → Deskthing UI
-```
-
-**WNP Role:** Receives metadata from browser and accepts commands from our adapter.
-**Our Adapter Role:** Translates WNP data to Deskthing SongData11, forwards Deskthing commands to WNP.
+**Status:** Phase 01 Research, Task 01-02
 
 ---
 
-## 1. Song Data Fields: WNP → Deskthing (SongData11)
+## 1. Core Metadata Fields Mapping
 
-### Core Track Information
+### Track Identification
 
-| WNP Field | Deskthing Field (SongData11) | Type | Notes |
-|-----------|------------------------------|------|-------|
-| `title` | `track_name` | string | Direct mapping |
-| `artist` | `artist` | string | WNP may return array; take first or join |
-| `album` | `album` | string \| null | Direct mapping |
-| `cover_url` / `Cover` | `thumbnail` | string \| null | **YES! Album covers are available** as URL |
-| `id` / `_ID` | `id` | string \| null | Player-specific track ID |
-| `player_name` / `Player` | `source` | string | Use as source identifier (e.g., "YouTube", "Spotify") |
+| WNP Field | WNP Type | SongData11 Field | SongData11 Type | Notes |
+|-----------|----------|------------------|-----------------|-------|
+| `title` / `Title` | string | `track_name` | string | Direct mapping. Default: "Unknown Track" |
+| `artist` / `Artist` | string or string[] | `artist` | string \| null | If array: use first element or join with ", ". Default: null |
+| `album` / `Album` | string | `album` | string \| null | Direct mapping. Default: null |
+| `id` / `ID` / `_ID` | string or number | `id` | string \| null | Player-specific track ID. Convert to string. Default: null |
+| `player_name` / `Player` | string | `source` | string | Identifies the source (e.g., "YouTube", "Spotify Web"). Default: "Web Player" |
+| `name` | string | `device` | string \| null | Player/display name. Default: null |
+| `id` (player) | string or number | `device_id` | string \| null | Unique player identifier. Default: null |
+
+### Album Art
+
+| WNP Field | WNP Type | SongData11 Field | SongData11 Type | Notes |
+|-----------|----------|------------------|-----------------|-------|
+| `cover_url` | string | `thumbnail` | string \| null | Direct URL. Can be passed to Deskthing UI or downloaded and cached locally |
+| `Cover` | string | `thumbnail` | string \| null | Local file path (Rainmeter format). Already downloaded |
+| `CoverWebAddress` | string | `thumbnail` | string \| null | Raw URL without download |
+
+---
+
+## 2. Timing Fields Mapping
 
 ### Duration and Position
 
-| WNP Field | Deskthing Field | Conversion Required |
-|-----------|-----------------|---------------------|
-| `duration` | `track_duration` | Convert `(HH):MM:SS` to milliseconds |
-| `duration_sec` / `DurationSeconds` | `track_duration` | Multiply by 1000 for milliseconds |
-| `position` / `Position` | `track_progress` | Convert `(HH):MM:SS` to milliseconds |
-| `position_sec` / `PositionSeconds` | `track_progress` | Multiply by 1000 for milliseconds |
-| `position_percent` / `Progress` | - | Not used directly in SongData11 (0-100) |
+| WNP Field | WNP Type | SongData11 Field | Conversion | Example |
+|-----------|----------|------------------|------------|---------|
+| `duration_seconds` / `DurationSeconds` | number (seconds) | `track_duration` | Multiply by 1000 → milliseconds | `180` → `180000` |
+| `duration` | string "M:SS" or "H:M:SS" | `track_duration` | Parse and convert to milliseconds | `"3:20"` → `200000` |
+| `position_seconds` / `PositionSeconds` | number (seconds) | `track_progress` | Multiply by 1000 → milliseconds | `45` → `45000` |
+| `position` / `Position` | string "M:SS" or "H:M:SS" | `track_progress` | Parse and convert to milliseconds | `"1:15"` → `75000` |
+| `position_percent` / `Progress` | number (0-100) | *(not used)* | Not directly mapped to SongData11 | N/A |
 
-### Playback State
+### Time Conversion Requirements
 
-| WNP Field | Deskthing Field | Mapping |
-|-----------|-----------------|---------|
-| `state` / `State` | `is_playing` | 0=stopped→false, 1=playing→true, 2=paused→false |
-| `state` = "playing"/"paused"/"stopped" | `is_playing` | String: "playing"→true, else→false |
+**Input: WNP "M:SS" or "H:M:SS" format**
+- Format: `[HH:]MM:SS` where hours are optional
+- Separator: Colon (`:`)
 
-### Shuffle and Repeat
+**Output: SongData11 milliseconds**
 
-| WNP Field | Deskthing Field | Mapping |
-|-----------|-----------------|---------|
-| `shuffle` / `ShuffleActive` | `shuffle_state` | 0→false, 1→true |
-| `repeat` / `RepeatMode` | `repeat_state` | 0→"off", 1→"track", 2→"all" |
+**Conversion Examples:**
+```
+"0:45"    → 45000    (45 seconds)
+"3:20"    → 200000   (3 minutes, 20 seconds)
+"1:05:30" → 3930000  (1 hour, 5 minutes, 30 seconds)
+```
 
-### Volume
+**Edge Cases:**
+- Empty string → `null`
+- `"0:00"` → `0`
+- Malformed format → Attempt parsing, fallback to `null`
+- Values > 24 hours → Handle as overflow (unlikely for music)
 
-| WNP Field | Deskthing Field | Notes |
-|-----------|-----------------|-------|
-| `volume` / `Volume` | `volume` | 0-100 range (both use same) |
+---
 
-### Device Information
+## 3. Playback State Mapping
 
-| WNP Field | Deskthing Field | Notes |
-|-----------|-----------------|-------|
-| `name` | `device` | Player/display name |
-| `id` / `_ID` | `device_id` | Unique player identifier |
+### State Enum to Boolean
 
-### Not Directly Mapped (Available from WNP, not in SongData11)
+| WNP Value (String) | WNP Value (Number) | SongData11 `is_playing` | Notes |
+|--------------------|--------------------|-------------------------|-------|
+| `"playing"` / `"PLAYING"` | `1` | `true` | Active playback |
+| `"paused"` / `"PAUSED"` | `2` | `false` | Playback paused |
+| `"stopped"` / `"STOPPED"` | `0` | `false` | No media active |
+| *(any other)* | *(any other)* | `false` | Default fallback |
 
-| WNP Field | Type | Description |
-|-----------|------|-------------|
-| `rating` | int (0-5) | Track rating |
-| `rating_system` | int | 0=None, 1=Like, 2=Like-Dislike, 3=Scale |
-| `remaining` | string | Remaining time in `(HH):MM:SS` |
-| `is_web_browser` | bool | Whether source is web browser |
-| `platform` | int | 0=none, 1=web, 2=linux, 3=darwin, 4=windows |
-| `created_at`, `updated_at`, `active_at` | timestamp | Player metadata timestamps |
+### State Conversion Logic
+
+**Input Type Detection:**
+- If `typeof state === 'number'`: Compare to numeric enum values
+- If `typeof state === 'string'`: Case-insensitive comparison to "playing"
+- Otherwise: Default to `false`
+
+**Edge Cases:**
+- `null`/`undefined` → `false`
+- Empty string → `false`
+- Invalid number → `false`
+- Mixed case ("Playing", "PLAYING") → Handle case-insensitively
+
+---
+
+## 4. Shuffle and Repeat State Mapping
+
+### Shuffle State
+
+| WNP Field | WNP Type | SongData11 Field | Conversion |
+|-----------|----------|------------------|------------|
+| `shuffle_active` / `ShuffleActive` | boolean | `shuffle_state` | Direct mapping (boolean) |
+| `shuffle` / `Shuffle` | number (0 or 1) | `shuffle_state` | 0 → `false`, 1 → `true` |
+
+**Edge Cases:**
+- `null`/`undefined` → `null` (SongData11 allows null)
+- Invalid number → Treat falsy values as `false`
+
+### Repeat State Mapping
+
+| WNP Value | WNP Type | SongData11 `repeat_state` | Notes |
+|-----------|----------|---------------------------|-------|
+| `"NONE"` / `0` | string or number | `"off"` | No repeat |
+| `"ALL"` / `2` | string or number | `"all"` | Repeat all/playlist |
+| `"ONE"` / `1` | string or number | `"track"` | Repeat single track |
+
+**Conversion Table:**
+
+| WNP Input | Type | SongData11 Output |
+|-----------|------|-------------------|
+| `"none"`, `"NONE"` | string | `"off"` |
+| `"all"`, `"ALL"` | string | `"all"` |
+| `"one"`, `"ONE"` | string | `"track"` |
+| `0` | number | `"off"` |
+| `1` | number | `"track"` |
+| `2` | number | `"all"` |
+| *(other/invalid)* | any | `"off"` (default) |
+
+**Edge Cases:**
+- `null`/`undefined` → `"off"`
+- Case variations → Handle case-insensitively
+- Invalid number → Default to `"off"`
+
+---
+
+## 5. Volume Mapping
+
+| WNP Field | WNP Type | SongData11 Field | Notes |
+|-----------|----------|------------------|-------|
+| `volume` / `Volume` | number (0-100) | `volume` | Direct mapping (same range) |
+
+**Volume Range:**
+- Both WNP and SongData11 use 0-100 range
+- No conversion required
+
+**Edge Cases:**
+- `null`/`undefined` → Use `0` or preserve last known value
+- Out of range (< 0 or > 100) → Clamp to valid range
+- Desktop players on Windows: Volume control NOT supported
+
+---
+
+## 6. Capability Flags (Abilities) Mapping
+
+### WNP Capability Flags to SongAbilities Array
+
+| WNP Field (v3.x) | WNP Field (CLI) | SongAbilities Enum | Notes |
+|------------------|-----------------|-------------------|-------|
+| `can_set_state` | `SupportsPlayPause` | `PLAY`, `PAUSE` | Maps to both abilities |
+| `can_skip_next` | `SupportsSkipNext` | `NEXT` | Direct |
+| `can_skip_previous` | `SupportsSkipPrevious` | `PREVIOUS` | Direct |
+| `can_set_position` | `SupportsSetPosition` | `REWIND`, `FAST_FORWARD` | Maps to both abilities |
+| `can_set_volume` | `SupportsSetVolume` | `CHANGE_VOLUME` | Direct |
+| `can_set_shuffle` | `SupportsToggleShuffleActive` | `SHUFFLE` | Direct |
+| `can_set_repeat` | `SupportsToggleRepeatMode` | `REPEAT` | Direct |
+| `can_set_rating` | `SupportsSetRating` | `LIKE` | Direct |
+
+### Capability Flag Detection
+
+**Version Differences:**
+- v3.x: Boolean fields (`can_set_state`, etc.)
+- CLI/legacy: Integer or boolean fields with different names
+
+**Mapping Logic:**
+- For each WNP capability flag, if `true`, add corresponding SongAbilities to array
+- `can_set_position` maps to BOTH `REWIND` and `FAST_FORWARD`
+- `can_set_state` maps to BOTH `PLAY` and `PAUSE`
+- Missing fields default to `false` (capability not available)
+
+**Desktop Player Limitations (Windows MTC):**
+- `can_set_volume`: Always `false` for desktop players
+- `can_set_rating`: Always `false` for desktop players
+- Other capabilities: Player-dependent
+
+---
+
+## 7. Fields Not Mapped (WNP → SongData11)
+
+### WNP Fields Without SongData11 Equivalent
+
+| WNP Field | WNP Type | Description | Handling |
+|-----------|----------|-------------|----------|
+| `rating` | number (0-5) | Track rating | Not in SongData11; can derive for `liked` if needed |
+| `rating_system` | number | Rating system type | Not in SongData11; metadata only |
+| `remaining` | string "M:SS" | Remaining time | Can be calculated from duration - position |
+| `is_web_browser` | boolean | Source is web browser | Metadata only; not in SongData11 |
+| `platform` | number enum | Platform type | Metadata only; not in SongData11 |
+| `created_at` | timestamp | Player creation time | Metadata only |
+| `updated_at` | timestamp | Player last update | Metadata only |
+| `active_at` | timestamp | Player last active | Metadata only |
 
 ### SongData11 Fields Not Available from WNP
 
-| Deskthing Field | Availability | Alternative |
-|-----------------|--------------|-------------|
-| `playlist` | ❌ Not available | Could derive from context if needed |
-| `playlist_id` | ❌ Not available | N/A |
-| `liked` | ⚠️ Partial | Use `rating` if `rating_system` is "Like" |
-| `color` | ❌ Not available | Could extract from thumbnail |
-| `can_*` fields | ✅ Available | See Capability Flags below |
+| SongData11 Field | Availability | Alternative |
+|------------------|--------------|-------------|
+| `playlist` | Not available | Set to `null` |
+| `playlist_id` | Not available | Set to `null` |
+| `liked` | Partial | Derive from `rating` when `rating_system` is "like" |
+| `color` | Not available | Could extract from thumbnail (advanced) |
 
 ---
 
-## 2. Capability Flags (Abilities Mapping)
+## 8. Null and Undefined Handling Strategy
 
-Deskthing uses an `abilities` array (SongAbilities enum). WNP provides boolean flags.
+### Default Values for Missing Fields
 
-### Mapping: WNP Capability Flags → SongAbilities
+| SongData11 Field | Default Value | Rationale |
+|------------------|---------------|-----------|
+| `track_name` | `"Unknown Track"` | User-friendly placeholder |
+| `artist` | `null` | Indicates no artist data |
+| `album` | `null` | Indicates no album data |
+| `thumbnail` | `null` | Indicates no cover art |
+| `track_duration` | `null` | Indicates unknown duration |
+| `track_progress` | `null` | Indicates unknown position |
+| `is_playing` | `false` | Safe default (not playing) |
+| `shuffle_state` | `null` | Indicates unknown state |
+| `repeat_state` | `"off"` | Safe default (no repeat) |
+| `volume` | `50` | Mid-range default |
+| `device` | `null` | Indicates no device info |
+| `device_id` | `null` | Indicates no device ID |
+| `id` | `null` | Indicates no track ID |
+| `source` | `"Web Player"` | Generic source identifier |
+| `playlist` | `null` | Not available from WNP |
+| `playlist_id` | `null` | Not available from WNP |
+| `abilities` | `[]` (empty array) | No capabilities when unknown |
 
-| WNP Flag | SongAbilities | WNP CLI Variable |
-|----------|---------------|------------------|
-| `can_set_state` / `SupportsPlayPause` | PLAY, PAUSE | `{{can-set-state}}` |
-| `can_skip_next` / `SupportsSkipNext` | NEXT | `{{can-skip-next}}` |
-| `can_skip_previous` / `SupportsSkipPrevious` | PREVIOUS | `{{can-skip-previous}}` |
-| `can_set_position` / `SupportsSetPosition` | REWIND, FAST_FORWARD | `{{can-set-position}}` |
-| `can_set_volume` / `SupportsSetVolume` | CHANGE_VOLUME | `{{can-set-volume}}` |
-| `can_set_shuffle` / `SupportsToggleShuffleActive` | SHUFFLE | `{{can-set-shuffle}}` |
-| `can_set_repeat` / `SupportsToggleRepeatMode` | REPEAT | `{{can-set-repeat}`` |
-| `can_set_rating` / `SupportsSetRating` | LIKE | `{{can-set-rating}}` |
-| `can_set_output` | SET_OUTPUT | Not in WNP (local OS only) |
+### Null Handling Examples
 
-### Generating Abilities Array
+**Scenario 1: New connection, no data yet**
+```json
+// WNP input (empty/default)
+{}
 
-```typescript
-function getWnpAbilities(wnpData): SongAbilities[] {
-  const abilities: SongAbilities[] = [];
-  if (wnpData.can_set_state) abilities.push(SongAbilities.PLAY, SongAbilities.PAUSE);
-  if (wnpData.can_skip_next) abilities.push(SongAbilities.NEXT);
-  if (wnpData.can_skip_previous) abilities.push(SongAbilities.PREVIOUS);
-  if (wnpData.can_set_position) abilities.push(SongAbilities.REWIND, SongAbilities.FAST_FORWARD);
-  if (wnpData.can_set_volume) abilities.push(SongAbilities.CHANGE_VOLUME);
-  if (wnpData.can_set_shuffle) abilities.push(SongAbilities.SHUFFLE);
-  if (wnpData.can_set_repeat) abilities.push(SongAbilities.REPEAT);
-  if (wnpData.can_set_rating) abilities.push(SongAbilities.LIKE);
-  return abilities;
+// SongData11 output
+{
+  "track_name": "Unknown Track",
+  "artist": null,
+  "album": null,
+  "is_playing": false,
+  "track_duration": null,
+  "track_progress": null,
+  // ... other null defaults
+}
+```
+
+**Scenario 2: Partial data (common during initial connection)**
+```json
+// WNP input
+{
+  "title": "Example Song",
+  "state": "playing"
+}
+
+// SongData11 output
+{
+  "track_name": "Example Song",
+  "artist": null,
+  "album": null,
+  "is_playing": true,
+  "track_duration": null,
+  "track_progress": null,
+  // ... other null defaults
 }
 ```
 
 ---
 
-## 3. Control/Interaction Mapping
+## 9. Array Handling Requirements
 
-### Playback Controls
+### Artist Field
 
-| Deskthing AUDIO_REQUESTS | Deskthing Payload | WNP Command | WNP Parameters |
-|--------------------------|-------------------|-------------|----------------|
-| `PLAY` | `undefined` or `{id, position, playlist}` | `play` / `try_set_state("PLAYING")` | Optional: track ID, position in ms |
-| `PAUSE` | `undefined` | `pause` / `try_set_state("PAUSED")` | None |
-| `STOP` | `undefined` | ❌ Not available in WNP | N/A |
-| `NEXT` | `undefined` | `skip-next` / `try_skip_next` | None |
-| `PREVIOUS` | `undefined` | `skip-previous` / `try_skip_previous` | None |
+**WNP Input Variations:**
+- Single string: `"Artist Name"`
+- Array of strings: `["Artist 1", "Artist 2"]`
+- Empty/null: `null` or `[]`
 
-### Seek Controls
+**Conversion to SongData11:**
+- **Single string:** Direct mapping
+- **Array:** Use first element OR join with comma separator
+  - First element: `artist[0]`
+  - Joined: `artist.join(", ")`
+- **Empty/null:** `null`
 
-| Deskthing AUDIO_REQUESTS | Deskthing Payload | WNP Command | WNP Parameters |
-|--------------------------|-------------------|-------------|----------------|
-| `SEEK` | `number` (milliseconds) | `set-position [x]` | Convert ms to seconds |
-| `REWIND` | `number` (amount to rewind) | `set-position -x` | Convert ms to seconds, negative |
-| `FAST_FORWARD` | `number` (amount to forward) | `set-position +x` | Convert ms to seconds, positive |
+**Examples:**
+```javascript
+// Single artist
+"Taylor Swift" → "Taylor Swift"
 
-### Volume Controls
+// Multiple artists (first element)
+["The Beatles", "John Lennon"] → "The Beatles"
 
-| Deskthing AUDIO_REQUESTS | Deskthing Payload | WNP Command | WNP Parameters |
-|--------------------------|-------------------|-------------|----------------|
-| `VOLUME` | `number` (0-100) | `set-volume [x]` | Direct (0-100) |
-| | | `set-volume +x` | Increase by x |
-| | | `set-volume -x` | Decrease by x |
+// Multiple artists (joined)
+["The Beatles", "John Lennon"] → "The Beatles, John Lennon"
 
-### Mode Controls
+// Empty
+null → null
+[] → null
+```
 
-| Deskthing AUDIO_REQUESTS | Deskthing Payload | WNP Command | WNP Parameters |
-|--------------------------|-------------------|-------------|----------------|
-| `SHUFFLE` | `boolean` | `set-shuffle 0/1` / `try_set_shuffle` | 0=off, 1=on |
-| `REPEAT` | `"off"\|"track"\|"all"` | `set-repeat NONE/ONE/ALL` | Map: off→NONE, track→ONE, all→ALL |
-| | | `toggle-repeat` / `try_toggle_repeat` | Cycles through modes |
-
-### Like/Rating Controls
-
-| Deskthing AUDIO_REQUESTS | Deskthing Payload | WNP Command | WNP Parameters |
-|--------------------------|-------------------|-------------|----------------|
-| `LIKE` | `string\|boolean` | `set-rating [0-5]` | Map boolean to 0 or 5 |
-| | | `toggle-thumbs-up` | Sets rating to 5 or 0 |
-| | | `toggle-thumbs-down` | Sets rating to 1 or 0 |
+**Recommendation:** Join with comma separator for completeness, or provide config option.
 
 ---
 
-## 4. Album Cover Art Details
+## 10. URL Handling for Album Art
 
-**YES, album covers are available!** WNP provides cover art through:
+### Cover URL Processing Options
 
-1. **`cover_url`** - Direct URL to the cover art image
-2. **`Cover` (Rainmeter)** - Local file path where cover is downloaded and cached
-3. **`CoverWebAddress` (Rainmeter)** - Raw URL without download
-
-### Cover Handling Options
-
-**Option 1: Direct URL (Recommended)**
+**Option 1: Direct URL (Recommended for initial implementation)**
 - Pass `cover_url` directly to `thumbnail` field
-- Deskthing UI will handle loading and caching
+- Pros: Simple, no processing
+- Cons: UI handles all loading/caching
 
-**Option 2: Download and Cache (Like Local Audio App)**
-- Download image from `cover_url`
-- Generate hash using `getAudioHash(id or title+artist)`
+**Option 2: Download and Cache (Like local audio app)**
+- Download image from URL
+- Generate deterministic hash from track ID or title+artist
 - Save to local cache directory
-- Pass local path to `thumbnail` field
+- Pass local path to `thumbnail`
 
-**Reference Implementation:**
-```typescript
-// From audio app mediaStore.ts
-if (message.thumbnail) {
-  const safeName = getAudioHash(message.id || `${message.trackName}-${message.artist}`)
-  message.thumbnail = await saveImage(message.thumbnail, safeName)
+**Download Cache Pattern (Reference):**
+```javascript
+// Hash generation (from audio app)
+function getAudioHash(songId: string): string {
+  return crypto.createHash("sha256")
+    .update(songId)
+    .digest("hex")
+    .slice(0, 16);
+}
+
+// Usage
+if (wnpData.cover_url) {
+  const safeName = getAudioHash(wnpData.id || `${wnpData.title}-${wnpData.artist}`);
+  thumbnail = await saveImage(wnpData.cover_url, safeName);
 }
 ```
 
+**URL Handling Edge Cases:**
+- Invalid URL → Set `thumbnail` to `null`
+- HTTP (non-HTTPS) → Allow but log warning
+- Data URLs (`data:image/...`) → Pass through or reject based on size
+- Relative URLs → Resolve against base URL (not typical for WNP)
+
 ---
 
-## 5. Conversion Helper Functions
+## 11. Complete Field Mapping Reference Table
 
-### Time Format Conversion
+### All WNP Fields to SongData11
 
-```typescript
-// Convert (HH):MM:SS to milliseconds
-function timeToMillis(timeStr: string): number {
-  const parts = timeStr.split(':').map(Number);
-  if (parts.length === 3) {
-    return (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000;
-  } else if (parts.length === 2) {
-    return (parts[0] * 60 + parts[1]) * 1000;
-  }
-  return 0;
-}
+| WNP Field | WNP Alt Names | SongData11 Field | Type Conversion | Default |
+|-----------|---------------|------------------|-----------------|---------|
+| **Core Metadata** |
+| `title` | `Title` | `track_name` | string → string | "Unknown Track" |
+| `artist` | `Artist` | `artist` | string[] → string (join) | null |
+| `album` | `Album` | `album` | string → string \| null | null |
+| `id` | `ID`, `_ID` | `id` | any → string \| null | null |
+| `player_name` | `Player` | `source` | string → string | "Web Player" |
+| `name` | - | `device` | string → string \| null | null |
+| **Album Art** |
+| `cover_url` | `Cover`, `CoverWebAddress` | `thumbnail` | string → string \| null | null |
+| **Timing** |
+| `duration_seconds` | `DurationSeconds` | `track_duration` | number × 1000 → number \| null | null |
+| `duration` | - | `track_duration` | "M:SS" → ms → number \| null | null |
+| `position_seconds` | `PositionSeconds` | `track_progress` | number × 1000 → number \| null | null |
+| `position` | `Position` | `track_progress` | "M:SS" → ms → number \| null | null |
+| **State** |
+| `state` | `State` | `is_playing` | "playing" → boolean | false |
+| `shuffle_active` | `ShuffleActive` | `shuffle_state` | boolean → boolean \| null | null |
+| `shuffle` | `Shuffle` | `shuffle_state` | 0/1 → boolean \| null | null |
+| `repeat_mode` | `RepeatMode` | `repeat_state` | enum → enum | "off" |
+| `repeat` | `Repeat` | `repeat_state` | 0/1/2 → enum | "off" |
+| **Volume** |
+| `volume` | `Volume` | `volume` | 0-100 → 0-100 | 50 |
+| **Capabilities** |
+| `can_set_state` | `SupportsPlayPause` | `abilities[]` | boolean → [PLAY, PAUSE] | [] |
+| `can_skip_next` | `SupportsSkipNext` | `abilities[]` | boolean → [NEXT] | [] |
+| `can_skip_previous` | `SupportsSkipPrevious` | `abilities[]` | boolean → [PREVIOUS] | [] |
+| `can_set_position` | `SupportsSetPosition` | `abilities[]` | boolean → [REWIND, FAST_FORWARD] | [] |
+| `can_set_volume` | `SupportsSetVolume` | `abilities[]` | boolean → [CHANGE_VOLUME] | [] |
+| `can_set_shuffle` | `SupportsToggleShuffleActive` | `abilities[]` | boolean → [SHUFFLE] | [] |
+| `can_set_repeat` | `SupportsToggleRepeatMode` | `abilities[]` | boolean → [REPEAT] | [] |
+| `can_set_rating` | `SupportsSetRating` | `abilities[]` | boolean → [LIKE] | [] |
 
-// Convert milliseconds to (HH):MM:SS
-function millisToTime(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  }
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+---
+
+## 12. Edge Case Examples
+
+### Edge Case 1: State String Case Variations
+
+**Input:** Various case formats for "playing"
+```
+"playing"  → is_playing: true
+"PLAYING"  → is_playing: true
+"Playing"  → is_playing: true
+"plaYING"  → is_playing: true
+```
+
+**Handling:** Case-insensitive comparison
+
+---
+
+### Edge Case 2: Malformed Time Strings
+
+**Input:** Non-standard time formats
+```
+"45"         → Attempt parse as seconds only → 45000
+"1:5"        → Single digit seconds → 65000
+"1:5:30"     → Three parts → 3930000
+"invalid"    → Parse failure → null
+undefined    → null
+```
+
+**Handling:** Graceful degradation with fallback to null
+
+---
+
+### Edge Case 3: Missing Capability Flags (v2.x)
+
+**Input:** v2.x WNP without capability fields
+```json
+{
+  "title": "Song",
+  "state": "playing"
+  // No can_* fields
 }
 ```
 
-### State Conversion
-
-```typescript
-// WNP state to Deskthing is_playing
-function wnpStateToIsPlaying(state: number | string): boolean {
-  if (typeof state === 'number') {
-    return state === 1; // 0=stopped, 1=playing, 2=paused
-  }
-  return state.toLowerCase() === 'playing';
-}
-
-// Deskthing repeat to WNP repeat
-function deskthingRepeatToWnp(repeat: "off" | "track" | "all"): string {
-  const mapping = { off: "NONE", track: "ONE", all: "ALL" };
-  return mapping[repeat];
+**Output:** Empty abilities array
+```json
+{
+  "abilities": []
 }
 ```
 
+**Handling:** Assume no capabilities when flags are missing
+
 ---
 
-## 6. Full SongData11 Construction Example
+### Edge Case 4: Empty Artist Array
 
-```typescript
-function wnpToSongData11(wnpData: any): SongData11 {
-  return {
-    version: 2,
-    track_name: wnpData.title || 'Unknown Track',
-    artist: wnpData.artist || null,
-    album: wnpData.album || null,
-    thumbnail: wnpData.cover_url || null,
-    is_playing: wnpStateToIsPlaying(wnpData.state),
-    track_duration: wnpData.duration_sec ? wnpData.duration_sec * 1000 : null,
-    track_progress: wnpData.position_sec ? wnpData.position_sec * 1000 : null,
-    volume: wnpData.volume ?? 0,
-    shuffle_state: wnpData.shuffle === 1,
-    repeat_state: wnpRepeatToDeskthing(wnpData.repeat),
-    source: wnpData.player_name || 'Web Player',
-    device: wnpData.name || null,
-    device_id: wnpData.id || null,
-    id: wnpData.id || null,
-    playlist: null,  // Not available from WNP
-    playlist_id: null,  // Not available from WNP
-    abilities: getWnpAbilities(wnpData)
-  };
+**Input:** Empty artist data
+```
+null          → artist: null
+[]            → artist: null
+[""]          → artist: null
+["", ""]      → artist: null
+["Artist"]    → artist: "Artist"
+["A", "B"]    → artist: "A, B"
+```
+
+**Handling:** Filter empty strings, return null if no valid artists
+
+---
+
+### Edge Case 5: Position Greater Than Duration
+
+**Input:** Invalid timing data
+```json
+{
+  "duration_seconds": 180,
+  "position_seconds": 200
 }
 ```
 
----
-
-## 7. WNP Protocol Events (for reference)
-
-The WNP adapter library emits these events (useful for debugging):
-
-| Event | Description |
-|-------|-------------|
-| `on_player_added` | New player detected |
-| `on_player_updated` | Player metadata changed |
-| `on_player_removed` | Player disconnected |
-| `on_active_player_changed` | Active player switched |
+**Handling:**
+- Log warning
+- Still map values directly (UI will handle display)
+- Alternatively, clamp position to duration
 
 ---
 
-## 8. Important Notes
+### Edge Case 6: Zero Duration with Playing State
 
-### Desktop Players vs Web Players
-- Web players (YouTube, Spotify Web) have full WNP support
-- Desktop players (Spotify.exe, etc.) have **limited support** on Windows:
-  - Volume control: ❌ NOT supported
-  - Rating control: ❌ NOT supported
-  - Other controls: ⚠️ Depends on player
+**Input:** Inconsistent state
+```json
+{
+  "state": "playing",
+  "duration_seconds": 0
+}
+```
 
-### Port Configuration
-- Default WNP port: 6534
-- **Our assigned port: 6344**
-- The browser extension connects to OUR adapter on this port
+**Handling:**
+- Stream/live content may have 0 duration
+- Set `is_playing: true` (trust the state)
+- Set `track_duration: null` (0 is ambiguous)
 
-### WNP Library Options
-1. **pywnp** (Python) - Used by OBS, well-maintained
-2. **wnp-c** (C library) - Used by CLI
-3. **Custom implementation** - WebSocket server on port 6344
+---
 
-### Data Limitations
-- `playlist` and `playlist_id` are not available from WNP
-- `liked` status must be derived from `rating` field
-- Some fields are browser/website dependent
+### Edge Case 7: Very Large Timestamp Values
+
+**Input:** Nanoseconds instead of seconds
+```
+duration_seconds: 180000000  (50 hours in nanoseconds)
+```
+
+**Handling (from local audio app):**
+- Check if value > 18000000 (8 hours in ms)
+- If true, assume nanoseconds, divide by 10000
+- Otherwise, assume seconds or milliseconds
+
+---
+
+## 13. Version-Specific Considerations
+
+### WNP v1.x (Legacy)
+- Capitalized field names (`State`, `Title`, etc.)
+- May lack capability flags
+- May have fewer fields
+
+**Handling:** Normalize to lowercase, use defaults for missing fields
+
+### WNP v2.x
+- Lowercase snake_case field names
+- Basic capability flags
+- Desktop player support introduced
+
+**Handling:** Standard case mapping, capability detection
+
+### WNP v3.x (Current)
+- Extended capability flags
+- Multiple player support
+- Event results for commands
+
+**Handling:** Full capability mapping, multi-player considerations
 
 ---
 
 ## Summary
 
-| What We Get | Mapping Complexity |
-|-------------|-------------------|
-| Title, Artist, Album | ✅ Direct |
-| Cover Art | ✅ Available via URL |
-| Duration, Position | ⚠️ Format conversion (seconds/ms) |
-| Play/Pause/Skip | ✅ Direct |
-| Seek (position) | ⚠️ Unit conversion (ms→seconds) |
-| Volume | ✅ Direct (0-100) |
-| Shuffle, Repeat | ✅ Direct |
-| Rating/Like | ✅ Available (0-5 scale) |
-| Playlist info | ❌ Not available |
+| Category | Complexity | Notes |
+|----------|------------|-------|
+| Core metadata (title, artist, album) | Low | Direct mapping, array handling for artist |
+| Album art | Low | Direct URL or cache download |
+| Duration/position | Medium | Seconds → milliseconds, time string parsing |
+| State (is_playing) | Low | String/number to boolean |
+| Shuffle/repeat | Medium | Enum mapping, case handling |
+| Volume | Low | Same range (0-100) |
+| Capabilities | Medium | Boolean flags to enum array |
+| Null handling | Low | Defined defaults for all fields |
+
+**Implementation Priority:**
+1. Core metadata + state (is_playing)
+2. Duration/position with conversion
+3. Shuffle/repeat mapping
+4. Capability flags
+5. Null handling and edge cases
