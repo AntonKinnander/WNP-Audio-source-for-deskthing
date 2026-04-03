@@ -20,10 +20,12 @@ export class MediaStore {
   private currentPlayer: WNPPlayer | null = null;
   private lastSongData: SongData11 | null = null;
 
-  // Optimistic state overrides for shuffle/repeat (immediate UI feedback)
+  // Optimistic state overrides (immediate UI feedback, prevents stale-data flash)
   private optimisticStateOverrides: {
     shuffle_active?: boolean;
     repeat_mode?: WNPRepeatMode;
+    volume?: number;
+    position_seconds?: number;
   } = {};
 
   // Play/pause: skip sending updates for 500ms to prevent UI flash
@@ -120,6 +122,16 @@ export class MediaStore {
         delete this.optimisticStateOverrides.repeat_mode;
       }
     }
+    if (this.optimisticStateOverrides.volume !== undefined) {
+      if (player.volume === this.optimisticStateOverrides.volume) {
+        delete this.optimisticStateOverrides.volume;
+      }
+    }
+    if (this.optimisticStateOverrides.position_seconds !== undefined) {
+      if (player.position_seconds === this.optimisticStateOverrides.position_seconds) {
+        delete this.optimisticStateOverrides.position_seconds;
+      }
+    }
 
     // Apply remaining optimistic overrides to outgoing data
     const adjustedPlayer = { ...player };
@@ -128,6 +140,12 @@ export class MediaStore {
     }
     if (this.optimisticStateOverrides.repeat_mode !== undefined) {
       adjustedPlayer.repeat_mode = this.optimisticStateOverrides.repeat_mode;
+    }
+    if (this.optimisticStateOverrides.volume !== undefined) {
+      adjustedPlayer.volume = this.optimisticStateOverrides.volume;
+    }
+    if (this.optimisticStateOverrides.position_seconds !== undefined) {
+      adjustedPlayer.position_seconds = this.optimisticStateOverrides.position_seconds;
     }
 
     // Store the current player data (raw, not adjusted) — always update
@@ -266,7 +284,7 @@ export class MediaStore {
   public handleShuffle(requested: boolean): void {
     console.log('Control: SHUFFLE command received from Deskthing');
     const current = this.optimisticStateOverrides.shuffle_active ??
-                    this.currentPlayer?.shuffle_active ?? false;
+      this.currentPlayer?.shuffle_active ?? false;
     if (current !== requested) {
       this.wnpServer.sendCommand('shuffle');
       console.log(`Control: Shuffle toggled (${current} → ${requested})`);
@@ -313,8 +331,8 @@ export class MediaStore {
    */
   public handleVolume(volume: number): void {
     console.log('Control: VOLUME command received from Deskthing');
-    this.suppressSendUntil = Date.now() + 500;
     const clamped = Math.max(0, Math.min(100, Math.floor(volume)));
+    this.optimisticStateOverrides.volume = clamped;
     this.wnpServer.setVolume(clamped);
     console.log(`Control: Volume set to ${clamped}`);
   }
@@ -326,6 +344,7 @@ export class MediaStore {
   public handleSeek(positionMs: number): void {
     console.log('Control: SEEK command received from Deskthing');
     const positionSeconds = positionMs / 1000;
+    this.optimisticStateOverrides.position_seconds = positionSeconds;
     this.wnpServer.seekTo(positionSeconds);
     console.log(`Control: Seeked to ${positionSeconds}s (${positionMs}ms)`);
   }
@@ -336,8 +355,10 @@ export class MediaStore {
    */
   public handleFastForward(amountMs: number): void {
     console.log('Control: FAST_FORWARD command received from Deskthing');
-    const currentPos = this.currentPlayer?.position_seconds ?? 0;
+    const currentPos = this.optimisticStateOverrides.position_seconds ??
+      this.currentPlayer?.position_seconds ?? 0;
     const newPos = Math.max(0, currentPos + (amountMs / 1000));
+    this.optimisticStateOverrides.position_seconds = newPos;
     this.wnpServer.seekTo(newPos);
     console.log(`Control: Fast forward ${amountMs}ms → ${newPos}s`);
   }
@@ -348,8 +369,10 @@ export class MediaStore {
    */
   public handleRewind(amountMs: number): void {
     console.log('Control: REWIND command received from Deskthing');
-    const currentPos = this.currentPlayer?.position_seconds ?? 0;
+    const currentPos = this.optimisticStateOverrides.position_seconds ??
+      this.currentPlayer?.position_seconds ?? 0;
     const newPos = Math.max(0, currentPos - (amountMs / 1000));
+    this.optimisticStateOverrides.position_seconds = newPos;
     this.wnpServer.seekTo(newPos);
     console.log(`Control: Rewind ${amountMs}ms → ${newPos}s`);
   }
