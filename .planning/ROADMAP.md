@@ -9,7 +9,7 @@ Building an official WebNowPlaying adapter that enables Deskthing to display mus
 - [ ] **Phase 1: Research** - Understand WNP protocol and communication patterns
 - [x] **Phase 2: Project Setup** - Create Deskthing app scaffold
 - [x] **Phase 3: WNP Server** - Implement server on port 6344 to receive browser data
-- [ ] **Phase 4: Data Translation** - Convert WNP messages to SongData11
+- [x] **Phase 4: Data Translation** - Convert WNP messages to SongData11
 - [ ] **Phase 5: Testing** - End-to-end verification
 
 ## Phase Details
@@ -48,8 +48,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: Create WNP → SongData11 mapping functions
-- [ ] 04-02: Integrate with Deskthing SDK (sendSong, event listeners)
+- [x] 04-01: Create WNP → SongData11 mapping functions
+- [x] 04-02: Integrate with Deskthing SDK (sendSong, event listeners)
 
 ### Phase 5: Testing
 **Goal**: Verify end-to-end functionality
@@ -67,5 +67,5 @@ Plans:
 | 1. Research | 0/2 | **Plans Created** | 01-01-PLAN.md, 01-02-PLAN.md |
 | 2. Project Setup | 3/3 | **COMPLETE** | 02-01-PLAN.md [DONE], 02-02-PLAN.md [DONE], 02-03-PLAN.md [DONE] |
 | 3. WNP Server | 2/2 | **COMPLETE** | 03-01-PLAN.md [DONE], 03-02-PLAN.md [DONE] |
-| 4. Data Translation | 0/2 | **Plans Created** | 04-01-PLAN.md, 04-02-PLAN.md |
+| 4. Data Translation | 2/2 | **COMPLETE** | 04-01-PLAN.md [DONE], 04-02-PLAN.md [DONE] |
 | 5. Testing | 0/2 | **Plans Created** | 05-01-PLAN.md, 05-02-PLAN.md |
