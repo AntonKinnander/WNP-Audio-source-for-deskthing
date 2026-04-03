@@ -7,7 +7,7 @@ Building an official WebNowPlaying adapter that enables Deskthing to display mus
 ## Phases
 
 - [ ] **Phase 1: Research** - Understand WNP protocol and communication patterns
-- [ ] **Phase 2: Project Setup** - Create Deskthing app scaffold
+- [x] **Phase 2: Project Setup** - Create Deskthing app scaffold
 - [ ] **Phase 3: WNP Server** - Implement server on port 6344 to receive browser data
 - [ ] **Phase 4: Data Translation** - Convert WNP messages to SongData11
 - [ ] **Phase 5: Testing** - End-to-end verification
@@ -31,7 +31,7 @@ Plans:
 Plans:
 - [x] 02-01: Initialize project (package.json, tsconfig, folder structure)
 - [x] 02-02: Create manifest.json (audio source type, port 6344)
-- [ ] 02-03: Set up build configuration (vite, esbuild, deskthing.config.ts)
+- [x] 02-03: Set up build configuration (vite, esbuild, deskthing.config.ts)
 
 ### Phase 3: WNP Server
 **Goal**: Implement server that receives data from browser extension
@@ -65,7 +65,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Research | 0/2 | **Plans Created** | 01-01-PLAN.md, 01-02-PLAN.md |
-| 2. Project Setup | 2/3 | **In Progress** | 02-01-PLAN.md [DONE], 02-02-PLAN.md [DONE], 02-03-PLAN.md |
+| 2. Project Setup | 3/3 | **COMPLETE** | 02-01-PLAN.md [DONE], 02-02-PLAN.md [DONE], 02-03-PLAN.md [DONE] |
 | 3. WNP Server | 0/2 | **Plans Created** | 03-01-PLAN.md, 03-02-PLAN.md |
 | 4. Data Translation | 0/2 | **Plans Created** | 04-01-PLAN.md, 04-02-PLAN.md |
 | 5. Testing | 0/2 | **Plans Created** | 05-01-PLAN.md, 05-02-PLAN.md |
