@@ -104,51 +104,99 @@ The WNP protocol **does not send explicit skip messages**. Skip actions are **in
 
 ## Adapter → Browser Commands (Sent)
 
-These commands are **sent by our adapter TO the browser** to control playback:
+These commands are **sent by our adapter TO the browser extension** as plain-text WebSocket messages. Our adapter operates in **legacy mode** (the extension auto-selects this after 1 second with no handshake).
 
-### Playback Controls
+### Wire Format
 
-| Command | Description |
-|---------|-------------|
-| `play` | Start playback |
-| `pause` | Pause playback |
-| `play-pause` | Toggle playback |
-| `set-state` | Set specific state (playing/paused/stopped) |
+Commands are plain text strings parsed by the extension's `OnEventLegacy()` handler (content.ts:391):
+```js
+const [type, data] = message.toUpperCase().split(" ");
+```
 
-### Navigation
+### Command Reference
 
-| Command | Description |
-|---------|-------------|
-| `skip-next` | Skip to next track |
-| `skip-previous` | Skip to previous track |
+| What We Send | Action | Data Format | Extension Check |
+|---|---|---|---|
+| `PLAYPAUSE` | Toggle play/pause | (none) | `canSetState` |
+| `PREVIOUS` | Skip to previous track | (none) | `canSkipPrevious` |
+| `NEXT` | Skip to next track | (none) | `canSkipNext` |
+| `SETPOSITION 34:` | Seek to position | seconds + trailing colon | `canSetPosition` |
+| `SETVOLUME 75` | Set volume | 0-100 integer | `canSetVolume` |
+| `REPEAT` | Cycle repeat mode | (none, cycles NONE→ALL→ONE) | `canSetRepeat` |
+| `SHUFFLE` | Toggle shuffle | (none) | `canSetShuffle` |
+| `TOGGLETHUMBSUP` | Toggle like | (none) | `canSetRating` |
+| `TOGGLETHUMBSDOWN` | Toggle dislike | (none) | `canSetRating` |
+| `RATING 4` | Set rating | 0-5 integer | `canSetRating` |
 
-### Position/Seeking
+### Deskthing → WNP Command Routing
 
-| Command | Description |
-|---------|-------------|
-| `set-position` | Seek to position (seconds) |
-| `forward` | Seek forward by seconds |
-| `revert` | Seek backward by seconds |
+The flow from Deskthing UI to browser:
 
-### Volume
+```
+Deskthing UI button press
+  → SongEvent.SET with request + payload
+    → index.ts switch on AUDIO_REQUESTS
+      → mediaStore.handleXxx(payload)
+        → wnpServer.sendCommand(name, params)
+          → WebSocket.send(text command)
+            → Browser extension executes action
+```
 
-| Command | Description |
-|---------|-------------|
-| `set-volume` | Set volume (0-100) |
+| Deskthing Event | Payload | Handler | WNP Command Sent | Notes |
+|---|---|---|---|---|
+| `PLAY` | none | `handlePlay()` | `PLAYPAUSE` | Legacy has only toggle, no separate play |
+| `PAUSE` | none | `handlePause()` | `PLAYPAUSE` | Same as play — both toggle |
+| `NEXT` | none | `handleNext()` | `NEXT` | Direct command |
+| `PREVIOUS` | none | `handlePrevious()` | `PREVIOUS` | Direct command |
+| `STOP` | none | `handleStop()` | `PLAYPAUSE` | Same toggle |
+| `SHUFFLE` | `boolean` | `handleShuffle(bool)` | `SHUFFLE` (if state differs) | Toggle-only: compare current vs requested |
+| `REPEAT` | `"all"\|"track"\|"off"` | `handleRepeat(mode)` | `REPEAT` (if state differs) | Toggle-only: compare current vs requested |
 
-### Playback Options
+### Toggle Command Strategy
 
-| Command | Description |
-|---------|-------------|
-| `set-repeat` | Set repeat mode (NONE/ALL/ONE) |
-| `toggle-repeat` | Cycle through repeat modes |
-| `set-shuffle` | Set shuffle (true/false) |
+Legacy mode only has **toggle** commands for shuffle and repeat — there is no way to set a specific state directly. Our adapter works around this:
 
-### Rating
+**Shuffle** — compares `currentPlayer.shuffle_active` with the requested boolean:
+- Same → do nothing (already in desired state)
+- Different → send `SHUFFLE` to toggle
 
-| Command | Description |
-|---------|-------------|
-| `set-rating` | Set rating value |
+**Repeat** — compares `currentPlayer.repeat_mode` (NONE/ALL/ONE) with the requested mode:
+- Same → do nothing
+- Different → send `REPEAT` to cycle (NONE→ALL→ONE→NONE)
+
+**Limitation**: If the cycle order doesn't produce the right state in one step (e.g. currently NONE, requesting ONE → cycles to ALL instead), the command will be off by one. This only affects the NONE↔ONE path. Upgrading to Rev 3 protocol would give us direct `TRY_SET_REPEAT "ONE"` and `TRY_SET_SHUFFLE 1` commands.
+
+### Value Mappings (Deskthing ↔ WNP)
+
+**Repeat:**
+
+| Deskthing | WNP Wire (metadata) | WNP RepeatMode enum |
+|---|---|---|
+| `"off"` | `REPEAT:0` | `NONE` |
+| `"all"` | `REPEAT:1` | `ALL` |
+| `"track"` | `REPEAT:2` | `ONE` |
+
+**Shuffle:**
+
+| Deskthing | WNP Wire (metadata) |
+|---|---|
+| `true` | `SHUFFLE:1` |
+| `false` | `SHUFFLE:0` |
+
+**State:**
+
+| Deskthing | WNP Wire (metadata) |
+|---|---|
+| `is_playing: true` | `STATE:1` |
+| `is_playing: false` (paused) | `STATE:2` |
+| `is_playing: false` (stopped) | `STATE:0` |
+
+### Not Yet Implemented
+
+| Deskthing Event | Payload | Status | Notes |
+|---|---|---|---|
+| `VOLUME` | `number` (0-100) | **Not wired** | Need to add handler + send `SETVOLUME <n>` |
+| `SEEK` | `number` (milliseconds) | **Not wired** | Need to add handler + send `SETPOSITION <s>:`, convert ms→seconds |
 
 ---
 

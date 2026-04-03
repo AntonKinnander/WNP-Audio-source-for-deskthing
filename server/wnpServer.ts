@@ -94,14 +94,16 @@ interface PartialPlayerData {
  * Protocol (from browser extension source socket.ts):
  * 1. Extension connects to ws://127.0.0.1:PORT
  * 2. Extension waits up to 1 second for ADAPTER_VERSION handshake
- * 3. If no handshake, falls back to "legacy" protocol
+ * 3. If no handshake, falls back to "legacy" protocol (socket.ts:80-88)
  * 4. Legacy metadata format: "KEY:VALUE" (e.g., "STATE:1", "TITLE:Song Name")
- * 5. Control commands use NUMERIC event codes:
- *    - 0 = toggle play/pause
- *    - 1 = previous track
- *    - 2 = next track
- *    - 3 <seconds> = seek
- *    - 4 <0-100> = set volume
+ * 5. Legacy control commands are TEXT NAMES (content.ts:391 OnEventLegacy):
+ *    - PLAYPAUSE = toggle play/pause
+ *    - PREVIOUS = previous track
+ *    - NEXT = next track
+ *    - SETPOSITION <s>: = seek (trailing colon required)
+ *    - SETVOLUME <0-100> = set volume
+ *    - REPEAT = cycle repeat mode
+ *    - SHUFFLE = toggle shuffle
  *
  * Events emitted:
  * - 'connected': When a client connects
@@ -576,18 +578,20 @@ export class WNPServer extends EventEmitter {
   /**
    * Send a control command to the browser extension
    *
-   * WNP Control Command Format (from browser extension source content.ts):
-   * Commands are NUMERIC event codes sent as plain text:
-   *   0 = toggle play/pause
-   *   1 = previous track
-   *   2 = next track
-   *   3 <seconds> = seek to position
-   *   4 <0-100> = set volume
-   *   5 = toggle repeat
-   *   6 = toggle shuffle
-   *   7 = toggle thumbs up
-   *   8 = toggle thumbs down
-   *   9 <rating> = set rating
+   * WNP Legacy Control Command Format (from browser extension source content.ts:391):
+   * Commands are TEXT NAMES sent as plain text (NOT numeric codes):
+   *   PLAYPAUSE        = toggle play/pause
+   *   PREVIOUS         = previous track
+   *   NEXT             = next track
+   *   SETPOSITION <s>: = seek to position (trailing colon required)
+   *   SETVOLUME <0-100> = set volume
+   *   REPEAT           = cycle repeat mode
+   *   SHUFFLE          = toggle shuffle
+   *   TOGGLETHUMBSUP   = toggle like
+   *   TOGGLETHUMBSDOWN = toggle dislike
+   *   RATING <0-5>     = set rating
+   *
+   * The extension enters legacy mode after 1s with no handshake (socket.ts:80-88).
    *
    * @param command - The command to send (e.g., 'play', 'pause', 'skip-next')
    * @param params - Optional parameters for the command
@@ -598,44 +602,46 @@ export class WNPServer extends EventEmitter {
     params?: Record<string, unknown>,
     _playerId?: number
   ): void {
-    // Map command names to numeric event codes
+    // Map command names to legacy text commands (content.ts OnEventLegacy)
     const commandMap: Record<string, string> = {
-      'toggle-playing': '0',
-      'play': '0',           // Toggle (same as play/pause in legacy)
-      'pause': '0',          // Toggle (same as play/pause in legacy)
-      'play-pause': '0',
-      'skip-previous': '1',
-      'previous': '1',
-      'skip-next': '2',
-      'next': '2',
-      'set-position': '3',
-      'seek': '3',
-      'set-volume': '4',
-      'volume': '4',
-      'toggle-repeat': '5',
-      'repeat': '5',
-      'toggle-shuffle': '6',
-      'shuffle': '6',
-      'thumbs-up': '7',
-      'thumbs-down': '8',
-      'set-rating': '9',
+      'toggle-playing': 'PLAYPAUSE',
+      'play': 'PLAYPAUSE',
+      'pause': 'PLAYPAUSE',
+      'play-pause': 'PLAYPAUSE',
+      'toggle-play-pause': 'PLAYPAUSE',
+      'skip-previous': 'PREVIOUS',
+      'previous': 'PREVIOUS',
+      'skip-next': 'NEXT',
+      'next': 'NEXT',
+      'set-position': 'SETPOSITION',
+      'seek': 'SETPOSITION',
+      'set-volume': 'SETVOLUME',
+      'volume': 'SETVOLUME',
+      'toggle-repeat': 'REPEAT',
+      'repeat': 'REPEAT',
+      'toggle-shuffle': 'SHUFFLE',
+      'shuffle': 'SHUFFLE',
+      'thumbs-up': 'TOGGLETHUMBSUP',
+      'thumbs-down': 'TOGGLETHUMBSDOWN',
+      'set-rating': 'RATING',
     };
 
-    const eventCode = commandMap[command.toLowerCase()] ?? null;
-    if (eventCode === null) {
+    const commandName = commandMap[command.toLowerCase()] ?? null;
+    if (commandName === null) {
       console.log(`WNP: Unknown command "${command}"`);
       return;
     }
 
-    // Build the message: event code + optional data
-    let message = eventCode;
+    // Build the message: command name + optional data
+    let message = commandName;
     if (params) {
       if (params.position !== undefined) {
-        message = `3 ${Math.floor(Number(params.position))}`;
+        // Legacy format: "SETPOSITION 34:" (trailing colon required)
+        message = `SETPOSITION ${Math.floor(Number(params.position))}:`;
       } else if (params.volume !== undefined) {
-        message = `4 ${Math.max(0, Math.min(100, Math.floor(Number(params.volume))))}`;
+        message = `SETVOLUME ${Math.max(0, Math.min(100, Math.floor(Number(params.volume))))}`;
       } else if (params.rating !== undefined) {
-        message = `9 ${Math.floor(Number(params.rating))}`;
+        message = `RATING ${Math.floor(Number(params.rating))}`;
       }
     }
 

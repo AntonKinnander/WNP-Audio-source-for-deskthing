@@ -100,6 +100,12 @@ DeskThing.on(SongEvent.SET, async (data) => {
     case AUDIO_REQUESTS.STOP:
       mediaStore.handleStop();
       break;
+    case AUDIO_REQUESTS.SHUFFLE:
+      mediaStore.handleShuffle(data.payload as boolean);
+      break;
+    case AUDIO_REQUESTS.REPEAT:
+      mediaStore.handleRepeat(data.payload as 'all' | 'track' | 'off');
+      break;
     default:
       console.log(`WNP: Unhandled SET command - ${data.request}`);
   }

@@ -487,3 +487,135 @@ The JSON format described in sections 1-14 appears to be:
 2. NOT the raw format sent by the browser extension
 
 The browser extension uses a simpler text-based protocol, and adapter libraries parse this into structured objects for consumption.
+
+---
+
+## 16. Adapter → Extension: Control Commands (Source Code Analysis)
+
+**Researched:** 2026-04-03, from browser extension source at `WNP-Examples/WebNowPlaying-browser-plugin-source/WebNowPlaying-main/src/`
+
+### Protocol Revision Detection (socket.ts)
+
+When the extension connects to an adapter, it starts a **1-second timeout** (`onOpen` at socket.ts:80):
+- If the adapter sends `ADAPTER_VERSION X.Y.Z;WNPLIB_REVISION N` → uses that revision
+- If the adapter sends `Version:<something>` → legacy mode
+- If **nothing** received within 1 second → `communicationRevision = "legacy"`, `version = "0.5.0"`
+
+Our adapter sends nothing on connection, so the extension **always** enters legacy mode after 1 second.
+
+### How Commands Flow (socket.ts → port.ts → content.ts)
+
+1. Adapter sends text message on WebSocket
+2. `socket.ts onMessage()` (line 99): If `communicationRevision` is set, calls `executeEvent(port, revision, data)`
+3. `port.ts executeEvent()` (line 37): Routes by revision
+   - `"legacy"` / `"1"`: Forwards raw `eventData` string to content script port
+   - `"3"`: Parses `<playerId> <eventId> <data>` format
+4. `content.ts` receives port message, dispatches to `OnEventLegacy()` / `OnEventRev1()` / `OnEventRev2()` / `OnEventRev3()`
+
+### Legacy Mode Commands (content.ts:391-486) — **WHAT WE USE**
+
+Parser: `const [type, data] = message.toUpperCase().split(" ");`
+
+The adapter must send **text command names**, NOT numeric codes:
+
+| Send This | Action | Notes |
+|-----------|--------|-------|
+| `PLAYPAUSE` | Toggle play/pause | Checks `canSetState` |
+| `PREVIOUS` | Skip to previous track | Checks `canSkipPrevious` |
+| `NEXT` | Skip to next track | Checks `canSkipNext` |
+| `SETPOSITION 34:` | Seek to 34 seconds | Note trailing colon. Checks `canSetPosition` |
+| `SETVOLUME 75` | Set volume to 75% | Checks `canSetVolume` |
+| `REPEAT` | Cycle repeat mode (NONE→ALL→ONE) | Checks `canSetRepeat` |
+| `SHUFFLE` | Toggle shuffle | Checks `canSetShuffle` |
+| `TOGGLETHUMBSUP` | Toggle like (rating 5/0) | Checks `canSetRating` |
+| `TOGGLETHUMBSDOWN` | Toggle dislike (rating 1/0) | Checks `canSetRating` |
+| `RATING 4` | Set rating to 4 | Checks `canSetRating` |
+
+### Rev 1 Commands (content.ts:488-581)
+
+Same logic as legacy but with different names:
+
+| Send This | Action |
+|-----------|--------|
+| `TOGGLE_PLAYING` | Toggle play/pause |
+| `PREVIOUS` | Skip previous |
+| `NEXT` | Skip next |
+| `SET_POSITION 34:` | Seek (with colon) |
+| `SET_VOLUME 75` | Set volume |
+| `TOGGLE_REPEAT` | Cycle repeat |
+| `TOGGLE_SHUFFLE` | Toggle shuffle |
+| `TOGGLE_THUMBS_UP` | Toggle like |
+| `TOGGLE_THUMBS_DOWN` | Toggle dislike |
+| `SET_RATING 4` | Set rating |
+
+### Rev 2 Commands (content.ts:583-665)
+
+Uses `TRY_` prefix, toggle-based repeat/shuffle:
+
+| Send This | Action |
+|-----------|--------|
+| `TRY_SET_STATE PLAYING` | Set state directly (PLAYING/PAUSED/STOPPED) |
+| `TRY_SKIP_PREVIOUS` | Skip previous |
+| `TRY_SKIP_NEXT` | Skip next |
+| `TRY_SET_POSITION 34:` | Seek (with colon) |
+| `TRY_SET_VOLUME 75` | Set volume |
+| `TRY_TOGGLE_REPEAT_MODE` | Cycle repeat |
+| `TRY_TOGGLE_SHUFFLE_ACTIVE` | Toggle shuffle |
+| `TRY_SET_RATING 4` | Set rating |
+
+### Rev 3 Commands (content.ts:667-733) — **CURRENT VERSION**
+
+Format: `<playerId> <eventId> <eventType> [data]`
+
+| EventType | Command | Data | Action |
+|-----------|---------|------|--------|
+| `0` | TRY_SET_STATE | `0`=PLAYING, `1`=PAUSED, `2`=STOPPED | Set state directly |
+| `1` | TRY_SKIP_PREVIOUS | (none) | Previous track |
+| `2` | TRY_SKIP_NEXT | (none) | Next track |
+| `3` | TRY_SET_POSITION | seconds (integer) | Seek |
+| `4` | TRY_SET_VOLUME | 0-100 (integer) | Set volume |
+| `5` | TRY_SET_RATING | 0-5 (integer) | Set rating |
+| `6` | TRY_SET_REPEAT | "NONE", "ALL", or "ONE" | Set repeat directly (not toggle!) |
+| `7` | TRY_SET_SHUFFLE | `0` or `1` | Set shuffle directly (not toggle!) |
+
+Examples:
+```
+0 1 0 0        → Player 0, event#1, set state PLAYING
+0 2 2          → Player 0, event#2, skip next
+0 3 3 120      → Player 0, event#3, seek to 120s
+0 4 4 75       → Player 0, event#4, set volume 75
+0 5 6 ALL      → Player 0, event#5, set repeat ALL
+0 6 7 1        → Player 0, event#6, shuffle ON
+```
+
+### Rev 3 Event Results
+
+After each command, extension sends back:
+```
+3 <eventId> <status>
+```
+Where `MessageType.EVENT_RESULT = 3`, status: `1` = SUCCEEDED, `2` = FAILED
+
+### Rev 3 Metadata Format (Different from Legacy!)
+
+Rev 3 sends **pipe-delimited** player data (NOT KEY:VALUE):
+```
+0 <playerId> id|name|title|artist|album|cover|state|position|duration|volume|rating|repeat|shuffle|ratingSystem|availableRepeat|canSetState|canSkipPrevious|canSkipNext|canSetPosition|canSetVolume|canSetRating|canSetRepeat|canSetShuffle|createdAt|updatedAt|activeAt|
+```
+
+Cover art is sent separately as binary (ArrayBuffer) with 4-byte player ID prefix.
+
+### Key Implementation Notes
+
+1. **Legacy mode has no play/pause distinction** — only `PLAYPAUSE` toggle. Rev 2+ has `TRY_SET_STATE PLAYING/PAUSED` for direct control.
+2. **Legacy SETPOSITION requires trailing colon**: `"SETPOSITION 34:"` not `"SETPOSITION 34"`. The colon is a delimiter from the old protocol.
+3. **Legacy REPEAT/SHUFFLE are toggle-only** — they cycle through modes. Rev 3 has direct `SET_REPEAT` with value.
+4. **Rev 3 uses playerId** from PLAYER_ADDED messages. Legacy/Rev1/Rev2 always target the active player.
+5. **Our adapter is currently in legacy mode** because we don't send a handshake. This is fine — legacy metadata (KEY:VALUE) is what we already parse.
+
+### Source Files
+
+- `src/extension/sw/socket.ts` — WebSocket handler, revision detection (onMessage:99, onOpen:80 with 1s timeout)
+- `src/extension/sw/port.ts` — executeEvent routing (line 37), sendEventResult (line 12)
+- `src/extension/content/content.ts` — OnEventLegacy (391), OnEventRev1 (488), OnEventRev2 (583), OnEventRev3 (667)
+- `src/extension/types.ts` — StateMode, Repeat, Player type definitions

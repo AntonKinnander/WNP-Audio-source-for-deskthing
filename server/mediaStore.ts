@@ -11,6 +11,7 @@ import { DeskThing } from "@deskthing/server";
 import { SongData11 } from "@deskthing/types";
 import { WNPServer } from "./wnpServer.js";
 import { wnpToSongData11 } from "./converter.js";
+import { WNPRepeatMode } from "./types.js";
 import type { WNPPlayer } from "./types.js";
 
 export class MediaStore {
@@ -211,6 +212,44 @@ export class MediaStore {
    */
   public handleStop(): void {
     this.wnpServer.sendCommand('toggle-play-pause');
+  }
+
+  /**
+   * Handle SHUFFLE command from Deskthing
+   * WNP legacy mode only has SHUFFLE (toggle), so we compare
+   * current state and only send if different from requested.
+   */
+  public handleShuffle(requested: boolean): void {
+    console.log('Control: SHUFFLE command received from Deskthing');
+    const current = this.currentPlayer?.shuffle_active ?? false;
+    if (current !== requested) {
+      this.wnpServer.sendCommand('shuffle');
+      console.log(`Control: Shuffle toggled (${current} → ${requested})`);
+    } else {
+      console.log(`Control: Shuffle already ${requested}, skipping`);
+    }
+  }
+
+  /**
+   * Handle REPEAT command from Deskthing
+   * WNP legacy mode only has REPEAT (cycles NONE→ALL→ONE), so we compare
+   * current state and only send if different from requested.
+   */
+  public handleRepeat(requested: 'all' | 'track' | 'off'): void {
+    console.log('Control: REPEAT command received from Deskthing');
+    const deskthingToWNP: Record<string, string> = {
+      'off': WNPRepeatMode.NONE,
+      'all': WNPRepeatMode.ALL,
+      'track': WNPRepeatMode.ONE,
+    };
+    const requestedWNP = deskthingToWNP[requested];
+    const currentWNP = this.currentPlayer?.repeat_mode ?? WNPRepeatMode.NONE;
+    if (currentWNP !== requestedWNP) {
+      this.wnpServer.sendCommand('repeat');
+      console.log(`Control: Repeat toggled (${currentWNP} → ${requestedWNP})`);
+    } else {
+      console.log(`Control: Repeat already ${requestedWNP}, skipping`);
+    }
   }
 
   /**
