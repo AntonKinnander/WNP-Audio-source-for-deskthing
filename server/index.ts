@@ -79,9 +79,30 @@ DeskThing.on(SongEvent.GET, async (data) => {
   }
 });
 
-// Song SET events - control commands (v2 - not yet implemented)
+// Song SET events - control commands
 DeskThing.on(SongEvent.SET, async (data) => {
-  console.log(`WNP: Received SET command - ${data.request} (not yet implemented)`);
+  console.log(`WNP: Received SET command - ${data.request}`);
+  const mediaStore = MediaStore.getInstance();
+
+  switch (data.request) {
+    case AUDIO_REQUESTS.PLAY:
+      mediaStore.handlePlay();
+      break;
+    case AUDIO_REQUESTS.PAUSE:
+      mediaStore.handlePause();
+      break;
+    case AUDIO_REQUESTS.NEXT:
+      mediaStore.handleNext();
+      break;
+    case AUDIO_REQUESTS.PREVIOUS:
+      mediaStore.handlePrevious();
+      break;
+    case AUDIO_REQUESTS.STOP:
+      mediaStore.handleStop();
+      break;
+    default:
+      console.log(`WNP: Unhandled SET command - ${data.request}`);
+  }
 });
 
 export {};

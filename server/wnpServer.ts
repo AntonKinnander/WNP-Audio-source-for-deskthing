@@ -526,13 +526,21 @@ export class WNPServer extends EventEmitter {
     };
     const payload = JSON.stringify(message);
 
-    console.log(`WNP: Sending command "${command}" to player ${targetPlayerId}`);
+    // Log full payload for command verification
+    console.log(`WNP: >>> Sending command to browser extension`);
+    console.log(`WNP: >>> Payload: ${payload}`);
+
+    const clientCount = this.clients.size;
+    const openClientCount = Array.from(this.clients).filter(c => c.readyState === WebSocket.OPEN).length;
+    console.log(`WNP: >>> Sending to ${openClientCount}/${clientCount} connected clients`);
 
     for (const client of this.clients) {
       if (client.readyState === WebSocket.OPEN) {
         client.send(payload);
       }
     }
+
+    console.log(`WNP: >>> Command "${command}" sent successfully`);
   }
 
   /**

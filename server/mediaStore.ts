@@ -147,6 +147,78 @@ export class MediaStore {
     await this.handleGetSong();
   }
 
+  // ========== Control Handlers (SongEvent.SET) ==========
+
+  /**
+   * Handle PLAY command from Deskthing
+   */
+  public handlePlay(): void {
+    console.log('');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('Control: PLAY command received from Deskthing');
+    console.log('───────────────────────────────────────────────────────────');
+    this.wnpServer.sendCommand('play');
+    console.log('Control: PLAY command flow completed');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('');
+  }
+
+  /**
+   * Handle PAUSE command from Deskthing
+   */
+  public handlePause(): void {
+    console.log('');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('Control: PAUSE command received from Deskthing');
+    console.log('───────────────────────────────────────────────────────────');
+    this.wnpServer.sendCommand('pause');
+    console.log('Control: PAUSE command flow completed');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('');
+  }
+
+  /**
+   * Handle NEXT command from Deskthing
+   */
+  public handleNext(): void {
+    console.log('');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('Control: SKIP-NEXT command received from Deskthing');
+    console.log('───────────────────────────────────────────────────────────');
+    this.wnpServer.skipNext();
+    console.log('Control: SKIP-NEXT command flow completed');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('');
+  }
+
+  /**
+   * Handle PREVIOUS command from Deskthing
+   */
+  public handlePrevious(): void {
+    console.log('');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('Control: SKIP-PREVIOUS command received from Deskthing');
+    console.log('───────────────────────────────────────────────────────────');
+    this.wnpServer.skipPrevious();
+    console.log('Control: SKIP-PREVIOUS command flow completed');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('');
+  }
+
+  /**
+   * Handle STOP command from Deskthing
+   */
+  public handleStop(): void {
+    console.log('');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('Control: STOP command received from Deskthing');
+    console.log('───────────────────────────────────────────────────────────');
+    this.wnpServer.sendCommand('stop');
+    console.log('Control: STOP command flow completed');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('');
+  }
+
   /**
    * Get the current player data
    * Useful for debugging and future control implementations
