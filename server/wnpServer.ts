@@ -509,6 +509,10 @@ export class WNPServer extends EventEmitter {
   /**
    * Send a control command to the browser extension
    *
+   * WNP Control Command Format (undocumented, reverse engineered):
+   * The browser extension expects commands in a specific format.
+   * Based on WNP protocol analysis, commands are sent as KEY:VALUE format.
+   *
    * @param command - The command to send (e.g., 'play', 'pause', 'skip-next')
    * @param params - Optional parameters for the command
    * @param playerId - Target player ID (uses active player if not specified)
@@ -519,28 +523,51 @@ export class WNPServer extends EventEmitter {
     playerId?: number
   ): void {
     const targetPlayerId = playerId ?? this.activePlayerId ?? 0;
-    const message: Record<string, unknown> = {
-      command,
-      id: targetPlayerId,
-      ...params
-    };
-    const payload = JSON.stringify(message);
 
-    // Log full payload for command verification
-    console.log(`WNP: >>> Sending command to browser extension`);
-    console.log(`WNP: >>> Payload: ${payload}`);
+    // Try KEY:VALUE format (similar to how browser sends metadata)
+    // Format: "EVENT:<command>" or plain command name
+    // Based on WNP Redux source, commands may be sent as:
+    // - "EVENT:play" or "EVENT:skip-next"
+    // - Plain "play" or "skip-next"
+    // - JSON format: {"event": "play", "id": 0}
+
+    // Let's try multiple formats to see what works
+    const formats: string[] = [];
+
+    // Format 1: EVENT:command format (KEY:VALUE style)
+    formats.push(`EVENT:${command}`);
+
+    // Format 2: Plain command
+    formats.push(command);
+
+    // Format 3: JSON with "event" key
+    const jsonPayload = JSON.stringify({ event: command, id: targetPlayerId, ...params });
+    formats.push(jsonPayload);
+
+    // Format 4: JSON with "command" key (original format)
+    const origJsonPayload = JSON.stringify({ command, id: targetPlayerId, ...params });
+    formats.push(origJsonPayload);
+
+    // Log all formats being tried
+    console.log(`WNP: >>> Sending command to browser extension: "${command}"`);
+    console.log(`WNP: >>> Trying ${formats.length} different formats:`);
+    formats.forEach((fmt, i) => console.log(`WNP: >>>   Format ${i + 1}: ${fmt}`));
 
     const clientCount = this.clients.size;
     const openClientCount = Array.from(this.clients).filter(c => c.readyState === WebSocket.OPEN).length;
     console.log(`WNP: >>> Sending to ${openClientCount}/${clientCount} connected clients`);
 
+    // Send all formats as separate messages
+    // The browser extension should respond to at least one of them
     for (const client of this.clients) {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(payload);
+        for (const format of formats) {
+          client.send(format);
+        }
       }
     }
 
-    console.log(`WNP: >>> Command "${command}" sent successfully`);
+    console.log(`WNP: >>> Command "${command}" sent (tried ${formats.length} formats)`);
   }
 
   /**
