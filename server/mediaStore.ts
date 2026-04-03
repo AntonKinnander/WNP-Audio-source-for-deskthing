@@ -77,7 +77,21 @@ export class MediaStore {
    * Converts WNP data to SongData11 and sends to Deskthing
    */
   private handlePlayerUpdate(player: WNPPlayer): void {
-    console.log(`MediaStore: Player update - "${player.title}" by ${player.artist}`);
+    // Log raw WNP data
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('MediaStore: WNP Player Update Received');
+    console.log('───────────────────────────────────────────────────────────');
+    console.log(`  Title:       "${player.title}"`);
+    console.log(`  Artist:      "${player.artist}"`);
+    console.log(`  Album:       "${player.album}"`);
+    console.log(`  State:       ${player.state}`);
+    console.log(`  Position:    ${player.position} (${player.position_seconds}s)`);
+    console.log(`  Duration:    ${player.duration} (${player.duration_seconds}s)`);
+    console.log(`  Cover URL:   ${player.cover_url || '(none)'}`);
+    console.log(`  Volume:      ${player.volume}%`);
+    console.log(`  Repeat:      ${player.repeat_mode}`);
+    console.log(`  Shuffle:     ${player.shuffle_active}`);
+    console.log('───────────────────────────────────────────────────────────');
 
     // Store the current player data
     this.currentPlayer = player;
@@ -86,9 +100,27 @@ export class MediaStore {
     const songData = wnpToSongData11(player);
     this.lastSongData = songData;
 
+    // Log converted SongData11
+    console.log('MediaStore: Converted to SongData11');
+    console.log('───────────────────────────────────────────────────────────');
+    console.log(`  source:          "${songData.source}"`);
+    console.log(`  track_name:      "${songData.track_name}"`);
+    console.log(`  artist:          ${songData.artist ? `"${songData.artist}"` : 'null'}`);
+    console.log(`  album:           ${songData.album ? `"${songData.album}"` : 'null'}`);
+    console.log(`  is_playing:      ${songData.is_playing}`);
+    console.log(`  track_duration:  ${songData.track_duration ? `${songData.track_duration}ms` : 'null'}`);
+    console.log(`  track_progress:  ${songData.track_progress ? `${songData.track_progress}ms` : 'null'}`);
+    console.log(`  volume:          ${songData.volume}`);
+    console.log(`  thumbnail:       ${songData.thumbnail ? `"${songData.thumbnail}"` : 'null'}`);
+    console.log(`  repeat_state:    "${songData.repeat_state}"`);
+    console.log(`  shuffle_state:   ${songData.shuffle_state ?? 'null'}`);
+    console.log(`  abilities:       [${songData.abilities.join(', ') || 'empty'}]`);
+    console.log('───────────────────────────────────────────────────────────');
+
     // Send to Deskthing
     DeskThing.sendSong(songData);
-    console.log('MediaStore: Sent song data to Deskthing');
+    console.log('MediaStore: ✅ Sent song data to Deskthing');
+    console.log('═══════════════════════════════════════════════════════════');
   }
 
   /**

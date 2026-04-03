@@ -278,19 +278,22 @@ export class WNPServer extends EventEmitter {
 
     // Handle handshake
     if (message === 'RECIPIENT') {
-      console.log('WNP: Received RECIPIENT handshake from browser extension');
+      console.log('WNP: ✅ Received RECIPIENT handshake from browser extension');
       return;
     }
 
     // Parse KEY:VALUE format
     const colonIndex = message.indexOf(':');
     if (colonIndex === -1) {
-      console.log('WNP: Received malformed message:', message);
+      console.log(`WNP: ⚠️  Received malformed message: "${message}"`);
       return;
     }
 
     const key = message.slice(0, colonIndex) as WNPField;
     const value = message.slice(colonIndex + 1);
+
+    // Log raw WNP message (useful for debugging)
+    console.log(`WNP: 📨 ${key}: "${value}"`);
 
     // Process the field
     this.processWNPField(key, value);
