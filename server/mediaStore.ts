@@ -308,6 +308,52 @@ export class MediaStore {
   }
 
   /**
+   * Handle VOLUME command from Deskthing
+   * @param volume - Volume level (0-100)
+   */
+  public handleVolume(volume: number): void {
+    console.log('Control: VOLUME command received from Deskthing');
+    const clamped = Math.max(0, Math.min(100, Math.floor(volume)));
+    this.wnpServer.setVolume(clamped);
+    console.log(`Control: Volume set to ${clamped}`);
+  }
+
+  /**
+   * Handle SEEK command from Deskthing
+   * @param positionMs - Position in milliseconds
+   */
+  public handleSeek(positionMs: number): void {
+    console.log('Control: SEEK command received from Deskthing');
+    const positionSeconds = positionMs / 1000;
+    this.wnpServer.seekTo(positionSeconds);
+    console.log(`Control: Seeked to ${positionSeconds}s (${positionMs}ms)`);
+  }
+
+  /**
+   * Handle FAST_FORWARD command from Deskthing
+   * @param amountMs - Amount to seek forward in milliseconds
+   */
+  public handleFastForward(amountMs: number): void {
+    console.log('Control: FAST_FORWARD command received from Deskthing');
+    const currentPos = this.currentPlayer?.position_seconds ?? 0;
+    const newPos = Math.max(0, currentPos + (amountMs / 1000));
+    this.wnpServer.seekTo(newPos);
+    console.log(`Control: Fast forward ${amountMs}ms → ${newPos}s`);
+  }
+
+  /**
+   * Handle REWIND command from Deskthing
+   * @param amountMs - Amount to rewind in milliseconds
+   */
+  public handleRewind(amountMs: number): void {
+    console.log('Control: REWIND command received from Deskthing');
+    const currentPos = this.currentPlayer?.position_seconds ?? 0;
+    const newPos = Math.max(0, currentPos - (amountMs / 1000));
+    this.wnpServer.seekTo(newPos);
+    console.log(`Control: Rewind ${amountMs}ms → ${newPos}s`);
+  }
+
+  /**
    * Get the current player data
    * Useful for debugging and future control implementations
    */
