@@ -333,6 +333,7 @@ export class MediaStore {
     console.log('Control: VOLUME command received from Deskthing');
     const clamped = Math.max(0, Math.min(100, Math.floor(volume)));
     this.optimisticStateOverrides.volume = clamped;
+    this.suppressSendUntil = Date.now() + 2000;
     this.wnpServer.setVolume(clamped);
     console.log(`Control: Volume set to ${clamped}`);
   }
@@ -345,6 +346,7 @@ export class MediaStore {
     console.log('Control: SEEK command received from Deskthing');
     const positionSeconds = positionMs / 1000;
     this.optimisticStateOverrides.position_seconds = positionSeconds;
+    this.suppressSendUntil = Date.now() + 2000;
     this.wnpServer.seekTo(positionSeconds);
     console.log(`Control: Seeked to ${positionSeconds}s (${positionMs}ms)`);
   }
@@ -359,6 +361,7 @@ export class MediaStore {
       this.currentPlayer?.position_seconds ?? 0;
     const newPos = Math.max(0, currentPos + (amountMs / 1000));
     this.optimisticStateOverrides.position_seconds = newPos;
+    this.suppressSendUntil = Date.now() + 2000;
     this.wnpServer.seekTo(newPos);
     console.log(`Control: Fast forward ${amountMs}ms → ${newPos}s`);
   }
@@ -373,6 +376,7 @@ export class MediaStore {
       this.currentPlayer?.position_seconds ?? 0;
     const newPos = Math.max(0, currentPos - (amountMs / 1000));
     this.optimisticStateOverrides.position_seconds = newPos;
+    this.suppressSendUntil = Date.now() + 2000;
     this.wnpServer.seekTo(newPos);
     console.log(`Control: Rewind ${amountMs}ms → ${newPos}s`);
   }
