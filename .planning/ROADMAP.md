@@ -64,8 +64,8 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Research | 0/2 | Not started | - |
-| 2. Project Setup | 0/3 | Not started | - |
-| 3. WNP Server | 0/2 | Not started | - |
-| 4. Data Translation | 0/2 | Not started | - |
-| 5. Testing | 0/2 | Not started | - |
+| 1. Research | 0/2 | **Plans Created** | 01-01-PLAN.md, 01-02-PLAN.md |
+| 2. Project Setup | 0/3 | **Plans Created** | 02-01-PLAN.md, 02-02-PLAN.md, 02-03-PLAN.md |
+| 3. WNP Server | 0/2 | **Plans Created** | 03-01-PLAN.md, 03-02-PLAN.md |
+| 4. Data Translation | 0/2 | **Plans Created** | 04-01-PLAN.md, 04-02-PLAN.md |
+| 5. Testing | 0/2 | **Plans Created** | 05-01-PLAN.md, 05-02-PLAN.md |
