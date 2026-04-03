@@ -207,16 +207,10 @@ export class MediaStore {
 
   /**
    * Handle STOP command from Deskthing
+   * WNP legacy mode: stop = toggle play/pause (event code 0)
    */
   public handleStop(): void {
-    console.log('');
-    console.log('═══════════════════════════════════════════════════════════');
-    console.log('Control: STOP command received from Deskthing');
-    console.log('───────────────────────────────────────────────────────────');
-    this.wnpServer.sendCommand('stop');
-    console.log('Control: STOP command flow completed');
-    console.log('═══════════════════════════════════════════════════════════');
-    console.log('');
+    this.wnpServer.sendCommand('toggle-play-pause');
   }
 
   /**

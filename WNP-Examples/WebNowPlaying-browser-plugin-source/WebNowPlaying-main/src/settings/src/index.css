@@ -1,0 +1,39 @@
+@import url(https://fonts.googleapis.com/css?family=Poppins);
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: "Poppins";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 100%; /* Without this, it seems scaled fine when running pnpm start, but not in a popup once the extension is loaded */
+}
+
+.without-ring {
+  @apply focus:ring-0 focus:ring-offset-0 appearance-none outline-none;
+}
+
+/* Remove scrollbars (WebKit) */
+*::-webkit-scrollbar {
+  display: none;
+}
+
+/* Remove scrollbars (Firefox) */
+* {
+  scrollbar-width: none;
+}
+
+/* Extension popout size */
+/* html for chrome, firefox wants body */
+html,
+body {
+  min-width: 400px;
+  max-width: 400px;
+  width: 400px;
+  min-height: 550px;
+  max-height: 550px;
+  height: 550px;
+}

@@ -26,7 +26,16 @@ enum WNPField {
   VOLUME = 'VOLUME',
   RATING = 'RATING',
   REPEAT = 'REPEAT',
-  SHUFFLE = 'SHUFFLE'
+  SHUFFLE = 'SHUFFLE',
+  // Ability fields (v3.0.0+)
+  CAN_SET_STATE = 'CANSETSTATE',
+  CAN_SKIP_PREVIOUS = 'CANSKIPPREVIOUS',
+  CAN_SKIP_NEXT = 'CANSKIPNEXT',
+  CAN_SET_POSITION = 'CANSETPOSITION',
+  CAN_SET_VOLUME = 'CANSETVOLUME',
+  CAN_SET_RATING = 'CANSETRATING',
+  CAN_SET_REPEAT = 'CANSETREPEAT',
+  CAN_SET_SHUFFLE = 'CANSETSHUFFLE'
 }
 
 /**
@@ -68,20 +77,31 @@ interface PartialPlayerData {
   repeat_mode?: WNPRepeatMode;
   shuffle_active?: boolean;
   timestamp?: number;
+  // Ability fields
+  can_set_state?: boolean;
+  can_skip_previous?: boolean;
+  can_skip_next?: boolean;
+  can_set_position?: boolean;
+  can_set_volume?: boolean;
+  can_set_rating?: boolean;
+  can_set_repeat?: boolean;
+  can_set_shuffle?: boolean;
 }
 
 /**
  * WNPServer - WebSocket server for WebNowPlaying browser extension
  *
- * This server listens on port 6344 and accepts connections from the WNP browser extension.
- * The extension sends media metadata updates as text-based KEY:VALUE messages.
- *
- * WNP Protocol (actual format from browser extension):
- * - Browser extension connects to ws://localhost:6344
- * - Client sends "RECIPIENT" handshake message upon connection
- * - Server receives text-based KEY:VALUE messages (e.g., "STATE:1", "TITLE:Song Name")
- * - Each field is sent as a separate message
- * - Position updates are sent approximately every second during playback
+ * Protocol (from browser extension source socket.ts):
+ * 1. Extension connects to ws://127.0.0.1:PORT
+ * 2. Extension waits up to 1 second for ADAPTER_VERSION handshake
+ * 3. If no handshake, falls back to "legacy" protocol
+ * 4. Legacy metadata format: "KEY:VALUE" (e.g., "STATE:1", "TITLE:Song Name")
+ * 5. Control commands use NUMERIC event codes:
+ *    - 0 = toggle play/pause
+ *    - 1 = previous track
+ *    - 2 = next track
+ *    - 3 <seconds> = seek
+ *    - 4 <0-100> = set volume
  *
  * Events emitted:
  * - 'connected': When a client connects
@@ -241,9 +261,18 @@ export class WNPServer extends EventEmitter {
 
   /**
    * Handle a new WebSocket connection
+   *
+   * WNP protocol: The browser extension connects and waits 1 second for
+   * an ADAPTER_VERSION handshake. If none received, it falls back to "legacy"
+   * mode which sends KEY:VALUE metadata (what our parser expects).
+   *
+   * We intentionally stay in legacy mode because:
+   * 1. Metadata already works (KEY:VALUE format)
+   * 2. Controls use the same numeric codes in all modes
+   * 3. Avoids having to update the metadata parser for rev2/rev3
    */
   private handleConnection(ws: WebSocket): void {
-    console.log('WNP: New client connected');
+    console.log('WNP: New client connected (legacy mode)');
     this.emit('connected', ws);
 
     // Add to clients set
@@ -271,25 +300,19 @@ export class WNPServer extends EventEmitter {
 
   /**
    * Handle incoming messages from the browser extension
-   * Parses text-based KEY:VALUE protocol format
+   * Parses text-based KEY:VALUE protocol format (legacy mode)
    */
   private handleMessage(_ws: WebSocket, data: Buffer): void {
     const message = data.toString().trim();
 
-    // Handle handshake
-    if (message === 'RECIPIENT') {
-      console.log('WNP: ✅ Received RECIPIENT handshake from browser extension');
-      return;
-    }
-
-    // Parse KEY:VALUE format
+    // Parse KEY:VALUE format (legacy protocol from browser extension)
     const colonIndex = message.indexOf(':');
     if (colonIndex === -1) {
-      console.log(`WNP: ⚠️  Received malformed message: "${message}"`);
+      console.log(`WNP: Received non-KEY:VALUE message: "${message}"`);
       return;
     }
 
-    const key = message.slice(0, colonIndex) as WNPField;
+    const key = message.slice(0, colonIndex);
     const value = message.slice(colonIndex + 1);
 
     // Log raw WNP message (useful for debugging)
@@ -423,10 +446,45 @@ export class WNPServer extends EventEmitter {
         }
         break;
 
+      // Ability fields - indicate which controls are supported
+      case WNPField.CAN_SET_STATE:
+        this.currentUpdate.can_set_state = value === '1' || value.toLowerCase() === 'true';
+        break;
+
+      case WNPField.CAN_SKIP_PREVIOUS:
+        this.currentUpdate.can_skip_previous = value === '1' || value.toLowerCase() === 'true';
+        break;
+
+      case WNPField.CAN_SKIP_NEXT:
+        this.currentUpdate.can_skip_next = value === '1' || value.toLowerCase() === 'true';
+        break;
+
+      case WNPField.CAN_SET_POSITION:
+        this.currentUpdate.can_set_position = value === '1' || value.toLowerCase() === 'true';
+        break;
+
+      case WNPField.CAN_SET_VOLUME:
+        this.currentUpdate.can_set_volume = value === '1' || value.toLowerCase() === 'true';
+        break;
+
+      case WNPField.CAN_SET_RATING:
+        this.currentUpdate.can_set_rating = value === '1' || value.toLowerCase() === 'true';
+        break;
+
+      case WNPField.CAN_SET_REPEAT:
+        this.currentUpdate.can_set_repeat = value === '1' || value.toLowerCase() === 'true';
+        break;
+
+      case WNPField.CAN_SET_SHUFFLE:
+        this.currentUpdate.can_set_shuffle = value === '1' || value.toLowerCase() === 'true';
+        break;
+
       default:
-        // Unknown field - log for debugging
-        console.log(`WNP: Unknown field "${key}": ${value}`);
-        return;
+        // Unknown field - log for debugging but don't return
+        // This allows us to see new fields that might be added
+        console.log(`WNP: ℹ️  Unknown field "${key}": ${value}`);
+        // Don't return - just log and continue
+        break;
     }
 
     // Emit update when we have meaningful changes
@@ -502,103 +560,126 @@ export class WNPServer extends EventEmitter {
       rating: this.currentUpdate.rating ?? DEFAULT_WNP_PLAYER.rating,
       repeat_mode: this.currentUpdate.repeat_mode ?? DEFAULT_WNP_PLAYER.repeat_mode,
       shuffle_active: this.currentUpdate.shuffle_active ?? DEFAULT_WNP_PLAYER.shuffle_active,
-      timestamp: now
+      timestamp: now,
+      // Ability fields (v3.0.0+)
+      can_set_state: this.currentUpdate.can_set_state,
+      can_skip_previous: this.currentUpdate.can_skip_previous,
+      can_skip_next: this.currentUpdate.can_skip_next,
+      can_set_position: this.currentUpdate.can_set_position,
+      can_set_volume: this.currentUpdate.can_set_volume,
+      can_set_rating: this.currentUpdate.can_set_rating,
+      can_set_repeat: this.currentUpdate.can_set_repeat,
+      can_set_shuffle: this.currentUpdate.can_set_shuffle
     };
   }
 
   /**
    * Send a control command to the browser extension
    *
-   * WNP Control Command Format (undocumented, reverse engineered):
-   * The browser extension expects commands in a specific format.
-   * Based on WNP protocol analysis, commands are sent as KEY:VALUE format.
+   * WNP Control Command Format (from browser extension source content.ts):
+   * Commands are NUMERIC event codes sent as plain text:
+   *   0 = toggle play/pause
+   *   1 = previous track
+   *   2 = next track
+   *   3 <seconds> = seek to position
+   *   4 <0-100> = set volume
+   *   5 = toggle repeat
+   *   6 = toggle shuffle
+   *   7 = toggle thumbs up
+   *   8 = toggle thumbs down
+   *   9 <rating> = set rating
    *
    * @param command - The command to send (e.g., 'play', 'pause', 'skip-next')
    * @param params - Optional parameters for the command
-   * @param playerId - Target player ID (uses active player if not specified)
+   * @param playerId - Target player ID (unused in legacy mode)
    */
   public sendCommand(
     command: string,
     params?: Record<string, unknown>,
-    playerId?: number
+    _playerId?: number
   ): void {
-    const targetPlayerId = playerId ?? this.activePlayerId ?? 0;
+    // Map command names to numeric event codes
+    const commandMap: Record<string, string> = {
+      'toggle-playing': '0',
+      'play': '0',           // Toggle (same as play/pause in legacy)
+      'pause': '0',          // Toggle (same as play/pause in legacy)
+      'play-pause': '0',
+      'skip-previous': '1',
+      'previous': '1',
+      'skip-next': '2',
+      'next': '2',
+      'set-position': '3',
+      'seek': '3',
+      'set-volume': '4',
+      'volume': '4',
+      'toggle-repeat': '5',
+      'repeat': '5',
+      'toggle-shuffle': '6',
+      'shuffle': '6',
+      'thumbs-up': '7',
+      'thumbs-down': '8',
+      'set-rating': '9',
+    };
 
-    // Try KEY:VALUE format (similar to how browser sends metadata)
-    // Format: "EVENT:<command>" or plain command name
-    // Based on WNP Redux source, commands may be sent as:
-    // - "EVENT:play" or "EVENT:skip-next"
-    // - Plain "play" or "skip-next"
-    // - JSON format: {"event": "play", "id": 0}
+    const eventCode = commandMap[command.toLowerCase()] ?? null;
+    if (eventCode === null) {
+      console.log(`WNP: Unknown command "${command}"`);
+      return;
+    }
 
-    // Let's try multiple formats to see what works
-    const formats: string[] = [];
-
-    // Format 1: EVENT:command format (KEY:VALUE style)
-    formats.push(`EVENT:${command}`);
-
-    // Format 2: Plain command
-    formats.push(command);
-
-    // Format 3: JSON with "event" key
-    const jsonPayload = JSON.stringify({ event: command, id: targetPlayerId, ...params });
-    formats.push(jsonPayload);
-
-    // Format 4: JSON with "command" key (original format)
-    const origJsonPayload = JSON.stringify({ command, id: targetPlayerId, ...params });
-    formats.push(origJsonPayload);
-
-    // Log all formats being tried
-    console.log(`WNP: >>> Sending command to browser extension: "${command}"`);
-    console.log(`WNP: >>> Trying ${formats.length} different formats:`);
-    formats.forEach((fmt, i) => console.log(`WNP: >>>   Format ${i + 1}: ${fmt}`));
-
-    const clientCount = this.clients.size;
-    const openClientCount = Array.from(this.clients).filter(c => c.readyState === WebSocket.OPEN).length;
-    console.log(`WNP: >>> Sending to ${openClientCount}/${clientCount} connected clients`);
-
-    // Send all formats as separate messages
-    // The browser extension should respond to at least one of them
-    for (const client of this.clients) {
-      if (client.readyState === WebSocket.OPEN) {
-        for (const format of formats) {
-          client.send(format);
-        }
+    // Build the message: event code + optional data
+    let message = eventCode;
+    if (params) {
+      if (params.position !== undefined) {
+        message = `3 ${Math.floor(Number(params.position))}`;
+      } else if (params.volume !== undefined) {
+        message = `4 ${Math.max(0, Math.min(100, Math.floor(Number(params.volume))))}`;
+      } else if (params.rating !== undefined) {
+        message = `9 ${Math.floor(Number(params.rating))}`;
       }
     }
 
-    console.log(`WNP: >>> Command "${command}" sent (tried ${formats.length} formats)`);
+    console.log(`WNP: >>> Sending control: "${command}" → "${message}"`);
+
+    const openClientCount = Array.from(this.clients).filter(c => c.readyState === WebSocket.OPEN).length;
+    console.log(`WNP: >>> Sending to ${openClientCount}/${this.clients.size} clients`);
+
+    for (const client of this.clients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    }
+
+    console.log(`WNP: >>> Control "${command}" sent`);
   }
 
   /**
    * Convenience method for play/pause toggle
+   * Uses event code 0 (TOGGLE_PLAYING)
    */
   public togglePlayPause(): void {
-    const activePlayer = this.getActivePlayer();
-    if (activePlayer) {
-      const command = activePlayer.state === WNPState.PLAYING ? 'pause' : 'play';
-      this.sendCommand(command);
-    } else {
-      this.sendCommand('play-pause');
-    }
+    this.sendCommand('toggle-play-pause');
   }
 
   /**
    * Convenience method for skipping to next track
+   * Uses event code 2 (NEXT)
    */
   public skipNext(): void {
-    this.sendCommand('skip-next');
+    this.sendCommand('next');
   }
 
   /**
    * Convenience method for skipping to previous track
+   * Uses event code 1 (PREVIOUS)
    */
   public skipPrevious(): void {
-    this.sendCommand('skip-previous');
+    this.sendCommand('previous');
   }
 
   /**
    * Convenience method for setting volume
+   * Uses event code 4 (SET_VOLUME)
    */
   public setVolume(volume: number): void {
     this.sendCommand('set-volume', { volume: Math.max(0, Math.min(100, volume)) });
@@ -606,6 +687,7 @@ export class WNPServer extends EventEmitter {
 
   /**
    * Convenience method for seeking to position
+   * Uses event code 3 (SET_POSITION)
    */
   public seekTo(positionSeconds: number): void {
     this.sendCommand('set-position', { position: positionSeconds });
