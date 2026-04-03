@@ -26,16 +26,8 @@ export class MediaStore {
     repeat_mode?: WNPRepeatMode;
   } = {};
 
-  // Play/pause state suppression (prevents UI flash)
-  private stateUpdateSuppression: {
-    isActive: boolean;
-    timeoutId: ReturnType<typeof setTimeout> | null;
-    suppressedState?: string;
-  } = {
-    isActive: false,
-    timeoutId: null,
-    suppressedState: undefined,
-  };
+  // Play/pause: skip sending updates for 500ms to prevent UI flash
+  private suppressSendUntil: number = 0;
 
   private constructor() {
     // Create a single WNP server instance
@@ -47,33 +39,6 @@ export class MediaStore {
       MediaStore.instance = new MediaStore();
     }
     return MediaStore.instance;
-  }
-
-  /**
-   * Start suppressing STATE field updates for a duration.
-   * Stores any state changes received during suppression and sends
-   * them after the timeout expires. Prevents play/pause UI flash.
-   */
-  private startStateSuppression(durationMs: number): void {
-    if (this.stateUpdateSuppression.timeoutId) {
-      clearTimeout(this.stateUpdateSuppression.timeoutId);
-    }
-
-    this.stateUpdateSuppression.isActive = true;
-
-    this.stateUpdateSuppression.timeoutId = setTimeout(() => {
-      this.stateUpdateSuppression.isActive = false;
-      this.stateUpdateSuppression.timeoutId = null;
-
-      if (this.stateUpdateSuppression.suppressedState && this.currentPlayer) {
-        const finalPlayer = { ...this.currentPlayer,
-                             state: this.stateUpdateSuppression.suppressedState };
-        const songData = wnpToSongData11(finalPlayer);
-        this.lastSongData = songData;
-        DeskThing.sendSong(songData);
-        this.stateUpdateSuppression.suppressedState = undefined;
-      }
-    }, durationMs);
   }
 
   /**
@@ -138,15 +103,10 @@ export class MediaStore {
     console.log(`  Shuffle:     ${player.shuffle_active}`);
     console.log('───────────────────────────────────────────────────────────');
 
-    // --- Play/pause state suppression ---
-    // Suppress STATE field changes during debounce window to prevent UI flash.
-    // Other fields (position, cover, etc.) still update normally.
-    if (this.stateUpdateSuppression.isActive) {
-      if (this.currentPlayer && player.state !== this.currentPlayer.state) {
-        this.stateUpdateSuppression.suppressedState = player.state;
-        player = { ...player, state: this.currentPlayer.state };
-      }
-    }
+    // --- Play/pause suppression ---
+    // Skip sending to Deskthing for 500ms after play/pause to prevent UI flash.
+    // We still update currentPlayer so state doesn't go stale.
+    const suppressSend = Date.now() < this.suppressSendUntil;
 
     // --- Optimistic state reconciliation ---
     // Clear overrides when browser confirms our predicted state
@@ -170,8 +130,14 @@ export class MediaStore {
       adjustedPlayer.repeat_mode = this.optimisticStateOverrides.repeat_mode;
     }
 
-    // Store the current player data (raw, not adjusted)
+    // Store the current player data (raw, not adjusted) — always update
     this.currentPlayer = player;
+
+    if (suppressSend) {
+      console.log('MediaStore: ⏸️ Suppressed send (play/pause debounce)');
+      console.log('═══════════════════════════════════════════════════════════');
+      return;
+    }
 
     // Convert WNP data to SongData11 (with overrides applied)
     const songData = wnpToSongData11(adjustedPlayer);
@@ -234,7 +200,7 @@ export class MediaStore {
     console.log('═══════════════════════════════════════════════════════════');
     console.log('Control: PLAY command received from Deskthing');
     console.log('───────────────────────────────────────────────────────────');
-    this.startStateSuppression(500);
+    this.suppressSendUntil = Date.now() + 500;
     this.wnpServer.sendCommand('play');
     console.log('Control: PLAY command flow completed');
     console.log('═══════════════════════════════════════════════════════════');
@@ -249,7 +215,7 @@ export class MediaStore {
     console.log('═══════════════════════════════════════════════════════════');
     console.log('Control: PAUSE command received from Deskthing');
     console.log('───────────────────────────────────────────────────────────');
-    this.startStateSuppression(500);
+    this.suppressSendUntil = Date.now() + 500;
     this.wnpServer.sendCommand('pause');
     console.log('Control: PAUSE command flow completed');
     console.log('═══════════════════════════════════════════════════════════');
@@ -364,17 +330,8 @@ export class MediaStore {
   public async stop(): Promise<void> {
     console.log('MediaStore: Stopping...');
     try {
-      // Clean up state suppression timeout
-      if (this.stateUpdateSuppression.timeoutId) {
-        clearTimeout(this.stateUpdateSuppression.timeoutId);
-      }
-      this.stateUpdateSuppression = {
-        isActive: false,
-        timeoutId: null,
-        suppressedState: undefined,
-      };
-
-      // Clear optimistic overrides
+      // Clear suppression and optimistic overrides
+      this.suppressSendUntil = 0;
       this.optimisticStateOverrides = {};
 
       await this.wnpServer.stop();
