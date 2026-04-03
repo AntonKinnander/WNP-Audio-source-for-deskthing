@@ -10,7 +10,7 @@ Building an official WebNowPlaying adapter that enables Deskthing to display mus
 - [x] **Phase 2: Project Setup** - Create Deskthing app scaffold
 - [x] **Phase 3: WNP Server** - Implement server on port 6344 to receive browser data
 - [x] **Phase 4: Data Translation** - Convert WNP messages to SongData11
-- [ ] **Phase 5: Testing** - End-to-end verification
+- [x] **Phase 5: Testing** - End-to-end verification
 
 ## Phase Details
 
@@ -57,8 +57,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 05-01: Test with actual browser extension (YouTube, Spotify Web)
-- [ ] 05-02: Verify all metadata displays in Deskthing UI
+- [x] 05-01: Test with actual browser extension (YouTube, Spotify Web)
+- [x] 05-02: Verify all metadata displays in Deskthing UI
 
 ## Progress
 
@@ -68,4 +68,4 @@ Plans:
 | 2. Project Setup | 3/3 | **COMPLETE** | 02-01-PLAN.md [DONE], 02-02-PLAN.md [DONE], 02-03-PLAN.md [DONE] |
 | 3. WNP Server | 2/2 | **COMPLETE** | 03-01-PLAN.md [DONE], 03-02-PLAN.md [DONE] |
 | 4. Data Translation | 2/2 | **COMPLETE** | 04-01-PLAN.md [DONE], 04-02-PLAN.md [DONE] |
-| 5. Testing | 0/2 | **Plans Created** | 05-01-PLAN.md, 05-02-PLAN.md |
+| 5. Testing | 2/2 | **COMPLETE** | 05-01-PLAN.md [DONE], 05-02-PLAN.md [DONE] |
