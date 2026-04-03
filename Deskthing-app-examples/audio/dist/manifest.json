@@ -1,0 +1,29 @@
+{
+  "id": "audio",
+  "requires": [],
+  "label": "Local Audio",
+  "version": "0.11.2",
+  "description": "A cross-platform audio app that lets you control any locally playing music",
+  "author": "Riprod",
+  "platforms": [
+    "windows",
+    "linux",
+    "mac",
+    "mac64",
+    "macarm",
+    "arm64",
+    "x64"
+  ],
+  "homepage": "https://github.com/itsriprod/deskthing-apps",
+  "postinstall": true,
+  "repository": "https://github.com/itsriprod/deskthing-apps",
+  "template": "base",
+  "tags": [
+    "audiosource"
+  ],
+  "requiredVersions": {
+    "server": ">=0.11.13",
+    "client": ">=0.11.2"
+  },
+  "updateUrl": "https://github.com/itsriprod/deskthing-apps"
+}
