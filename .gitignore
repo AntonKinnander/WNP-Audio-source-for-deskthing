@@ -27,3 +27,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Custom Exceptions
+WNP-Examples/
+CLAUDE.md
+Deskthing-app-examples/
+.planning/
+.claude/
+Documentation/

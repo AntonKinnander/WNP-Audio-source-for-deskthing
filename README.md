@@ -6,6 +6,24 @@ A Deskthing audio source adapter that receives music metadata from the WebNowPla
 
 This app enables Deskthing to display song information from web browsers by running a WNP-compatible server on port 6344. The WNP browser extension connects to this adapter and pushes real-time music metadata.
 
+It offers significantly less perceived latency than the standard Local Audio source.
+
+## Features
+
+Gets much better data for playing media, including:
+- Play, Pause, and Skip tracks
+- **Higher quality thumbnails**
+- Support for **Shuffle** and **Repeat**
+- Timeline **Scrubbing**
+- **Adjusting the volume** of the player
+
+## Required Browser Extension
+
+To use this adapter, you **must install** the awesome Web Now Playing (WNP) extension in your browser.
+
+- [WNP for Chrome](https://chromewebstore.google.com/detail/webnowplaying/jfakgfcdgpghbbefmdfjkbdlibjgnbli)
+- [WNP for Firefox](https://addons.mozilla.org/en-US/firefox/addon/webnowplaying/)
+
 ## Data Flow
 
 ```
