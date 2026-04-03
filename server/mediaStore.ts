@@ -20,6 +20,23 @@ export class MediaStore {
   private currentPlayer: WNPPlayer | null = null;
   private lastSongData: SongData11 | null = null;
 
+  // Optimistic state overrides for shuffle/repeat (immediate UI feedback)
+  private optimisticStateOverrides: {
+    shuffle_active?: boolean;
+    repeat_mode?: WNPRepeatMode;
+  } = {};
+
+  // Play/pause state suppression (prevents UI flash)
+  private stateUpdateSuppression: {
+    isActive: boolean;
+    timeoutId: ReturnType<typeof setTimeout> | null;
+    suppressedState?: string;
+  } = {
+    isActive: false,
+    timeoutId: null,
+    suppressedState: undefined,
+  };
+
   private constructor() {
     // Create a single WNP server instance
     this.wnpServer = new WNPServer(6344);
@@ -30,6 +47,33 @@ export class MediaStore {
       MediaStore.instance = new MediaStore();
     }
     return MediaStore.instance;
+  }
+
+  /**
+   * Start suppressing STATE field updates for a duration.
+   * Stores any state changes received during suppression and sends
+   * them after the timeout expires. Prevents play/pause UI flash.
+   */
+  private startStateSuppression(durationMs: number): void {
+    if (this.stateUpdateSuppression.timeoutId) {
+      clearTimeout(this.stateUpdateSuppression.timeoutId);
+    }
+
+    this.stateUpdateSuppression.isActive = true;
+
+    this.stateUpdateSuppression.timeoutId = setTimeout(() => {
+      this.stateUpdateSuppression.isActive = false;
+      this.stateUpdateSuppression.timeoutId = null;
+
+      if (this.stateUpdateSuppression.suppressedState && this.currentPlayer) {
+        const finalPlayer = { ...this.currentPlayer,
+                             state: this.stateUpdateSuppression.suppressedState };
+        const songData = wnpToSongData11(finalPlayer);
+        this.lastSongData = songData;
+        DeskThing.sendSong(songData);
+        this.stateUpdateSuppression.suppressedState = undefined;
+      }
+    }, durationMs);
   }
 
   /**
@@ -94,11 +138,43 @@ export class MediaStore {
     console.log(`  Shuffle:     ${player.shuffle_active}`);
     console.log('───────────────────────────────────────────────────────────');
 
-    // Store the current player data
+    // --- Play/pause state suppression ---
+    // Suppress STATE field changes during debounce window to prevent UI flash.
+    // Other fields (position, cover, etc.) still update normally.
+    if (this.stateUpdateSuppression.isActive) {
+      if (this.currentPlayer && player.state !== this.currentPlayer.state) {
+        this.stateUpdateSuppression.suppressedState = player.state;
+        player = { ...player, state: this.currentPlayer.state };
+      }
+    }
+
+    // --- Optimistic state reconciliation ---
+    // Clear overrides when browser confirms our predicted state
+    if (this.optimisticStateOverrides.shuffle_active !== undefined) {
+      if (player.shuffle_active === this.optimisticStateOverrides.shuffle_active) {
+        delete this.optimisticStateOverrides.shuffle_active;
+      }
+    }
+    if (this.optimisticStateOverrides.repeat_mode !== undefined) {
+      if (player.repeat_mode === this.optimisticStateOverrides.repeat_mode) {
+        delete this.optimisticStateOverrides.repeat_mode;
+      }
+    }
+
+    // Apply remaining optimistic overrides to outgoing data
+    const adjustedPlayer = { ...player };
+    if (this.optimisticStateOverrides.shuffle_active !== undefined) {
+      adjustedPlayer.shuffle_active = this.optimisticStateOverrides.shuffle_active;
+    }
+    if (this.optimisticStateOverrides.repeat_mode !== undefined) {
+      adjustedPlayer.repeat_mode = this.optimisticStateOverrides.repeat_mode;
+    }
+
+    // Store the current player data (raw, not adjusted)
     this.currentPlayer = player;
 
-    // Convert WNP data to SongData11
-    const songData = wnpToSongData11(player);
+    // Convert WNP data to SongData11 (with overrides applied)
+    const songData = wnpToSongData11(adjustedPlayer);
     this.lastSongData = songData;
 
     // Log converted SongData11
@@ -158,6 +234,7 @@ export class MediaStore {
     console.log('═══════════════════════════════════════════════════════════');
     console.log('Control: PLAY command received from Deskthing');
     console.log('───────────────────────────────────────────────────────────');
+    this.startStateSuppression(500);
     this.wnpServer.sendCommand('play');
     console.log('Control: PLAY command flow completed');
     console.log('═══════════════════════════════════════════════════════════');
@@ -172,6 +249,7 @@ export class MediaStore {
     console.log('═══════════════════════════════════════════════════════════');
     console.log('Control: PAUSE command received from Deskthing');
     console.log('───────────────────────────────────────────────────────────');
+    this.startStateSuppression(500);
     this.wnpServer.sendCommand('pause');
     console.log('Control: PAUSE command flow completed');
     console.log('═══════════════════════════════════════════════════════════');
@@ -221,10 +299,21 @@ export class MediaStore {
    */
   public handleShuffle(requested: boolean): void {
     console.log('Control: SHUFFLE command received from Deskthing');
-    const current = this.currentPlayer?.shuffle_active ?? false;
+    const current = this.optimisticStateOverrides.shuffle_active ??
+                    this.currentPlayer?.shuffle_active ?? false;
     if (current !== requested) {
       this.wnpServer.sendCommand('shuffle');
       console.log(`Control: Shuffle toggled (${current} → ${requested})`);
+
+      // Optimistic update: immediately reflect in UI
+      this.optimisticStateOverrides.shuffle_active = requested;
+
+      if (this.currentPlayer) {
+        const adjustedPlayer = { ...this.currentPlayer, shuffle_active: requested };
+        const songData = wnpToSongData11(adjustedPlayer);
+        this.lastSongData = songData;
+        DeskThing.sendSong(songData);
+      }
     } else {
       console.log(`Control: Shuffle already ${requested}, skipping`);
     }
@@ -275,6 +364,19 @@ export class MediaStore {
   public async stop(): Promise<void> {
     console.log('MediaStore: Stopping...');
     try {
+      // Clean up state suppression timeout
+      if (this.stateUpdateSuppression.timeoutId) {
+        clearTimeout(this.stateUpdateSuppression.timeoutId);
+      }
+      this.stateUpdateSuppression = {
+        isActive: false,
+        timeoutId: null,
+        suppressedState: undefined,
+      };
+
+      // Clear optimistic overrides
+      this.optimisticStateOverrides = {};
+
       await this.wnpServer.stop();
       this.currentPlayer = null;
       this.lastSongData = null;
