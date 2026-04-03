@@ -39,7 +39,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: Implement WebSocket/server on port 6344
+- [x] 03-01: Implement WebSocket/server on port 6344
 - [ ] 03-02: Handle WNP connection and message parsing
 
 ### Phase 4: Data Translation
