@@ -313,6 +313,7 @@ export class MediaStore {
    */
   public handleVolume(volume: number): void {
     console.log('Control: VOLUME command received from Deskthing');
+    this.suppressSendUntil = Date.now() + 500;
     const clamped = Math.max(0, Math.min(100, Math.floor(volume)));
     this.wnpServer.setVolume(clamped);
     console.log(`Control: Volume set to ${clamped}`);
