@@ -364,3 +364,126 @@ Browser extension sends updates when:
 **Research Completed:** 2025-04-03
 **Phase:** 01 - Research Plan 01-01
 **Next Steps:** Protocol implementation design
+
+---
+
+## 15. CRITICAL DISCOVERY: Actual Message Format (Live Testing)
+
+**⚠️ IMPORTANT: The documentation above describes JSON format, but LIVE TESTING reveals the actual browser extension sends text-based KEY:VALUE messages.**
+
+### Discovered Through Live Testing (YouTube Music, 2025-04-03)
+
+When the WNP browser extension connects to an adapter, it does **NOT** send JSON messages as documented. Instead, it sends individual text messages in `KEY:VALUE` format.
+
+### Actual Protocol Format
+
+```
+KEY:VALUE
+```
+
+Each field is sent as a separate WebSocket message. For example:
+```
+PLAYER:YouTube Music
+TITLE:Dj Ramezz & Amina " Do You Want It Right Now " 2024 (Eurodance Version)
+ARTIST:Dj Ramezz
+ALBUM:
+COVER:https://i.ytimg.com/vi/6cHowSUMiw/sddefault.jpg
+STATE:1
+DURATION:4:05
+POSITION:0:00
+VOLUME:100
+RATING:0
+REPEAT:0
+SHUFFLE:0
+```
+
+### Complete Field List
+
+| Field | Format | Example | Description |
+|-------|--------|---------|-------------|
+| `PLAYER` | `PLAYER:<name>` | `PLAYER:YouTube Music` | Player/source name |
+| `TITLE` | `TITLE:<text>` | `TITLE:Song Name` | Track title |
+| `ARTIST` | `ARTIST:<text>` | `ARTIST:Artist Name` | Artist name |
+| `ALBUM` | `ALBUM:<text>` | `ALBUM:Album Name` | Album name (empty if none) |
+| `COVER` | `COVER:<url>` | `COVER:https://...` | Cover art URL |
+| `STATE` | `STATE:0/1/2` | `STATE:1` | 0=Stopped, 1=Playing, 2=Paused |
+| `DURATION` | `DURATION:M:SS` | `DURATION:3:45` | Duration in minutes:seconds |
+| `POSITION` | `POSITION:M:SS` | `POSITION:1:23` | Current position |
+| `VOLUME` | `VOLUME:0-100` | `VOLUME:75` | Volume level |
+| `RATING` | `RATING:0-5` | `RATING:0` | Rating (0 = not rated) |
+| `REPEAT` | `REPEAT:0/1/2` | `REPEAT:0` | 0=None, 1=All, 2=One |
+| `SHUFFLE` | `SHUFFLE:0/1` | `SHUFFLE:0` | 0=Off, 1=On |
+
+### Event-to-Action Mapping (Observed from YouTube Music)
+
+| Message Sequence | User Action | Interpretation |
+|------------------|-------------|----------------|
+| `STATE:0` + `DURATION:0:00` + `POSITION:0:00` | Stop/Close player | Player stopped, no track loaded |
+| `STATE:1` + New `TITLE` + `POSITION:0:00` | Play / New Track | Track started from beginning |
+| `STATE:2` | Pause | Playback paused |
+| `VOLUME:X` (various values) | Volume slider change | Volume updated (21, 76, 100 observed) |
+| `REPEAT:0` | Repeat: Off | Repeat disabled |
+| `REPEAT:1` | Repeat: All | Repeat all tracks |
+| `REPEAT:2` | Repeat: One | Repeat single track |
+| `SHUFFLE:0` | Shuffle: Off | Shuffle disabled |
+| `SHUFFLE:1` | Shuffle: On | Shuffle enabled |
+| `POSITION:0:01`, `0:02`, `0:03`... | Playback progress | Position updates every ~1 second |
+| New `TITLE` + `COVER` + `DURATION` + `POSITION:0:00` | Skip to next track | New track loaded |
+
+### State Value Mappings
+
+| Value | State | Description |
+|-------|-------|-------------|
+| `0` | Stopped | No media playing or player closed |
+| `1` | Playing | Active playback |
+| `2` | Paused | Playback paused |
+
+### Repeat Mode Mappings
+
+| Value | Mode | Description |
+|-------|------|-------------|
+| `0` | None | No repeat |
+| `1` | All | Repeat all/playlist |
+| `2` | One | Repeat single track |
+
+### Shuffle Mappings
+
+| Value | State | Description |
+|-------|-------|-------------|
+| `0` | Off | Shuffle disabled |
+| `1` | On | Shuffle enabled |
+
+### Message Flow Pattern
+
+1. **Connection Established**
+   - Client sends: `RECIPIENT`
+   - Server acknowledges connection
+
+2. **Initial State Dump** (when media is playing)
+   - All fields sent in sequence: `PLAYER`, `TITLE`, `ARTIST`, `ALBUM`, `COVER`, `STATE`, `DURATION`, `POSITION`, `VOLUME`, `RATING`, `REPEAT`, `SHUFFLE`
+
+3. **Position Updates** (during playback)
+   - `POSITION:M:SS` sent approximately every second
+   - Other fields only sent when changed
+
+4. **State Changes**
+   - `STATE` updates immediately on play/pause/stop
+   - Track changes trigger full field dump
+
+### Implementation Notes
+
+1. **Accumulate fields**: Since each field arrives as a separate message, the adapter must accumulate them into a complete state object.
+
+2. **Detect updates**: A "complete" update is indicated by receiving the `POSITION` field or when a full set of fields has been received.
+
+3. **Handle partial data**: Some fields (like `ALBUM`) may be empty - still sent but with no value after the colon.
+
+4. **Position updates are frequent**: During playback, only `POSITION` updates are sent (not all fields).
+
+### Why Documentation Mismatch
+
+The JSON format described in sections 1-14 appears to be:
+1. The format used by **adapter libraries** (pywnp, C libraries) to present data to applications
+2. NOT the raw format sent by the browser extension
+
+The browser extension uses a simpler text-based protocol, and adapter libraries parse this into structured objects for consumption.

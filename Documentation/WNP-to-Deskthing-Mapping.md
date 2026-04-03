@@ -6,6 +6,8 @@ This document provides a comprehensive reference for mapping WebNowPlaying (WNP)
 
 **Status:** Phase 01 Research, Task 01-02
 
+**⚠️ CRITICAL UPDATE (2025-04-03):** The WNP browser extension sends **text-based KEY:VALUE messages**, NOT JSON. See `WNP-Protocol-Findings.md` section 15 for the actual protocol format discovered through live testing with YouTube Music.
+
 ---
 
 ## 1. Core Metadata Fields Mapping
