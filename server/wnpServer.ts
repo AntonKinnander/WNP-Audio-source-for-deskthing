@@ -3,12 +3,9 @@ import { Server as HTTPServer } from 'http';
 import { EventEmitter } from 'events';
 import {
   WNPPlayer,
-  WNPMessage,
   WNPState,
   WNPRepeatMode,
-  DEFAULT_WNP_PLAYER,
-  isWNPPlayer,
-  isWNPState
+  DEFAULT_WNP_PLAYER
 } from './types.js';
 
 const WNP_PORT = 6344;
@@ -276,7 +273,7 @@ export class WNPServer extends EventEmitter {
    * Handle incoming messages from the browser extension
    * Parses text-based KEY:VALUE protocol format
    */
-  private handleMessage(ws: WebSocket, data: Buffer): void {
+  private handleMessage(_ws: WebSocket, data: Buffer): void {
     const message = data.toString().trim();
 
     // Handle handshake
@@ -504,42 +501,6 @@ export class WNPServer extends EventEmitter {
       shuffle_active: this.currentUpdate.shuffle_active ?? DEFAULT_WNP_PLAYER.shuffle_active,
       timestamp: now
     };
-  }
-
-  /**
-   * Normalize and validate player data from WNP message
-   * Ensures all required fields exist and have correct types
-   */
-  private normalizePlayerData(data: unknown): WNPPlayer | null {
-    if (!isWNPPlayer(data)) {
-      return null;
-    }
-
-    const player: WNPPlayer = { ...DEFAULT_WNP_PLAYER, ...data };
-
-    // Normalize state to lowercase
-    if (typeof player.state === 'string') {
-      const stateLower = player.state.toLowerCase();
-      if (isWNPState(stateLower)) {
-        (player as unknown as { state: WNPState }).state = stateLower;
-      } else {
-        // Default to stopped if invalid state
-        (player as unknown as { state: WNPState }).state = WNPState.STOPPED;
-      }
-    }
-
-    // Ensure numeric fields are numbers
-    player.duration_seconds = Number(player.duration_seconds) || 0;
-    player.position_seconds = Number(player.position_seconds) || 0;
-    player.position_percent = Number(player.position_percent) || 0;
-    player.volume = Number(player.volume) || 100;
-    player.rating = Number(player.rating) || 0;
-    player.timestamp = Number(player.timestamp) || Date.now();
-
-    // Ensure boolean fields are booleans
-    player.shuffle_active = Boolean(player.shuffle_active);
-
-    return player;
   }
 
   /**
