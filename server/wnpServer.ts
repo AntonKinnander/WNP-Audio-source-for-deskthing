@@ -384,15 +384,27 @@ export class WNPServer extends EventEmitter {
       case WNPField.DURATION:
         if (value !== this.currentUpdate.duration) {
           this.currentUpdate.duration = value;
-          // Parse duration to seconds (M:SS format)
+          // Parse duration to seconds (handles SS, M:SS, H:M:SS, etc.)
+          // Parse from right to left: last part is always seconds, second-to-last is minutes, etc.
           const durationParts = value.split(':');
-          if (durationParts.length === 2) {
-            const minutes = parseInt(durationParts[0], 10) || 0;
-            const seconds = parseInt(durationParts[1], 10) || 0;
-            this.currentUpdate.duration_seconds = minutes * 60 + seconds;
-          } else {
-            this.currentUpdate.duration_seconds = 0;
+          const numParts = durationParts.length;
+          let totalSeconds = 0;
+
+          if (numParts >= 1) {
+            // Last part is always seconds
+            totalSeconds += parseInt(durationParts[numParts - 1], 10) || 0;
           }
+          if (numParts >= 2) {
+            // Second-to-last is minutes
+            totalSeconds += (parseInt(durationParts[numParts - 2], 10) || 0) * 60;
+          }
+          if (numParts >= 3) {
+            // Third-to-last is hours
+            totalSeconds += (parseInt(durationParts[numParts - 3], 10) || 0) * 3600;
+          }
+          // Ignore any additional parts (unlikely but safe)
+
+          this.currentUpdate.duration_seconds = totalSeconds;
           hasUpdate = true;
         }
         break;
@@ -400,15 +412,27 @@ export class WNPServer extends EventEmitter {
       case WNPField.POSITION:
         if (value !== this.currentUpdate.position) {
           this.currentUpdate.position = value;
-          // Parse position to seconds (M:SS format)
+          // Parse position to seconds (handles SS, M:SS, H:M:SS, etc.)
+          // Parse from right to left: last part is always seconds, second-to-last is minutes, etc.
           const positionParts = value.split(':');
-          if (positionParts.length === 2) {
-            const minutes = parseInt(positionParts[0], 10) || 0;
-            const seconds = parseInt(positionParts[1], 10) || 0;
-            this.currentUpdate.position_seconds = minutes * 60 + seconds;
-          } else {
-            this.currentUpdate.position_seconds = 0;
+          const numParts = positionParts.length;
+          let totalSeconds = 0;
+
+          if (numParts >= 1) {
+            // Last part is always seconds
+            totalSeconds += parseInt(positionParts[numParts - 1], 10) || 0;
           }
+          if (numParts >= 2) {
+            // Second-to-last is minutes
+            totalSeconds += (parseInt(positionParts[numParts - 2], 10) || 0) * 60;
+          }
+          if (numParts >= 3) {
+            // Third-to-last is hours
+            totalSeconds += (parseInt(positionParts[numParts - 3], 10) || 0) * 3600;
+          }
+          // Ignore any additional parts (unlikely but safe)
+
+          this.currentUpdate.position_seconds = totalSeconds;
           // Position updates are frequent; log but don't always emit
           this.emitUpdateIfReady(/* forceOnPosition */ true);
           return;
