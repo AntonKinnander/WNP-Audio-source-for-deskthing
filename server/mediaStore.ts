@@ -22,6 +22,7 @@ export class MediaStore {
 
   // Optimistic state overrides (immediate UI feedback, prevents stale-data flash)
   // Each field has its own timestamp for independent timeout tracking
+  // Also stores the last_browser_value to ignore duplicate stale values
   private optimisticStateOverrides: {
     shuffle_active?: boolean;
     shuffle_active_timestamp?: number;
@@ -29,8 +30,10 @@ export class MediaStore {
     repeat_mode_timestamp?: number;
     volume?: number;
     volume_timestamp?: number;
+    volume_last_browser_value?: number;
     position_seconds?: number;
     position_seconds_timestamp?: number;
+    position_last_browser_value?: number;
   } = {};
 
   // Play/pause: skip sending updates for 500ms to prevent UI flash
@@ -123,35 +126,57 @@ export class MediaStore {
     // Start with a copy of the browser's data, then override where needed
     const adjustedPlayer = { ...player };
 
-    // Volume override
+    // Volume override - ignore duplicate browser values
     if (this.optimisticStateOverrides.volume !== undefined) {
       const elapsed = this.optimisticStateOverrides.volume_timestamp ? now - this.optimisticStateOverrides.volume_timestamp : Infinity;
+
+      // Check if browser is sending the same old value again
+      const isDuplicate = player.volume === this.optimisticStateOverrides.volume_last_browser_value;
+
       if (elapsed > TIMEOUT) {
         console.log(`MediaStore: ⏱️ Volume override timed out (${elapsed}ms), clearing`);
         delete this.optimisticStateOverrides.volume;
         delete this.optimisticStateOverrides.volume_timestamp;
+        delete this.optimisticStateOverrides.volume_last_browser_value;
       } else if (player.volume === this.optimisticStateOverrides.volume) {
         console.log(`MediaStore: ✅ Volume confirmed by browser (${player.volume}), clearing override`);
         delete this.optimisticStateOverrides.volume;
         delete this.optimisticStateOverrides.volume_timestamp;
+        delete this.optimisticStateOverrides.volume_last_browser_value;
+      } else if (isDuplicate) {
+        // Browser sending same old value - ignore it silently
+        adjustedPlayer.volume = this.optimisticStateOverrides.volume;
       } else {
+        // Browser sent a different value (user changed in browser)
+        this.optimisticStateOverrides.volume_last_browser_value = player.volume;
         console.log(`MediaStore: 🔒 Volume override: browser=${player.volume}, optimistic=${this.optimisticStateOverrides.volume} (${elapsed}ms old)`);
         adjustedPlayer.volume = this.optimisticStateOverrides.volume;
       }
     }
 
-    // Position override
+    // Position override - ignore duplicate browser values
     if (this.optimisticStateOverrides.position_seconds !== undefined) {
       const elapsed = this.optimisticStateOverrides.position_seconds_timestamp ? now - this.optimisticStateOverrides.position_seconds_timestamp : Infinity;
+
+      // Check if browser is sending the same old value again (within tolerance)
+      const isDuplicate = Math.abs(player.position_seconds - (this.optimisticStateOverrides.position_last_browser_value ?? player.position_seconds)) < 0.5;
+
       if (elapsed > TIMEOUT) {
         console.log(`MediaStore: ⏱️ Position override timed out (${elapsed}ms), clearing`);
         delete this.optimisticStateOverrides.position_seconds;
         delete this.optimisticStateOverrides.position_seconds_timestamp;
+        delete this.optimisticStateOverrides.position_last_browser_value;
       } else if (Math.abs(player.position_seconds - this.optimisticStateOverrides.position_seconds) < 1) {
         console.log(`MediaStore: ✅ Position confirmed by browser, clearing override`);
         delete this.optimisticStateOverrides.position_seconds;
         delete this.optimisticStateOverrides.position_seconds_timestamp;
+        delete this.optimisticStateOverrides.position_last_browser_value;
+      } else if (isDuplicate) {
+        // Browser sending same old value - ignore it silently
+        adjustedPlayer.position_seconds = this.optimisticStateOverrides.position_seconds;
       } else {
+        // Browser sent a different value (user changed in browser)
+        this.optimisticStateOverrides.position_last_browser_value = player.position_seconds;
         console.log(`MediaStore: 🔒 Position override: browser=${player.position_seconds.toFixed(1)}s, optimistic=${this.optimisticStateOverrides.position_seconds.toFixed(1)}s (${elapsed}ms old)`);
         adjustedPlayer.position_seconds = this.optimisticStateOverrides.position_seconds;
       }
@@ -377,8 +402,11 @@ export class MediaStore {
     console.log('Control: VOLUME command received from Deskthing');
     console.log('───────────────────────────────────────────────────────────');
     const clamped = Math.max(0, Math.min(100, Math.floor(volume)));
+    const currentBrowserVolume = this.currentPlayer?.volume;
+
     this.optimisticStateOverrides.volume = clamped;
     this.optimisticStateOverrides.volume_timestamp = Date.now();
+    this.optimisticStateOverrides.volume_last_browser_value = currentBrowserVolume;
 
     // Optimistic update: immediately send to Deskthing
     if (this.currentPlayer) {
@@ -389,7 +417,7 @@ export class MediaStore {
     }
 
     this.wnpServer.setVolume(clamped);
-    console.log(`Control: Volume set to ${clamped}`);
+    console.log(`Control: Volume set to ${clamped} (was ${currentBrowserVolume})`);
     console.log('═══════════════════════════════════════════════════════════');
     console.log('');
   }
@@ -404,8 +432,11 @@ export class MediaStore {
     console.log('Control: SEEK command received from Deskthing');
     console.log('───────────────────────────────────────────────────────────');
     const positionSeconds = positionMs / 1000;
+    const currentBrowserPosition = this.currentPlayer?.position_seconds;
+
     this.optimisticStateOverrides.position_seconds = positionSeconds;
     this.optimisticStateOverrides.position_seconds_timestamp = Date.now();
+    this.optimisticStateOverrides.position_last_browser_value = currentBrowserPosition;
 
     // Optimistic update: immediately send to Deskthing
     if (this.currentPlayer) {
@@ -432,8 +463,10 @@ export class MediaStore {
     console.log('───────────────────────────────────────────────────────────');
     const currentPos = this.currentPlayer?.position_seconds ?? 0;
     const newPos = Math.max(0, currentPos + (amountMs / 1000));
+
     this.optimisticStateOverrides.position_seconds = newPos;
     this.optimisticStateOverrides.position_seconds_timestamp = Date.now();
+    this.optimisticStateOverrides.position_last_browser_value = currentPos;
 
     // Optimistic update: immediately send to Deskthing
     if (this.currentPlayer) {
@@ -460,8 +493,10 @@ export class MediaStore {
     console.log('───────────────────────────────────────────────────────────');
     const currentPos = this.currentPlayer?.position_seconds ?? 0;
     const newPos = Math.max(0, currentPos - (amountMs / 1000));
+
     this.optimisticStateOverrides.position_seconds = newPos;
     this.optimisticStateOverrides.position_seconds_timestamp = Date.now();
+    this.optimisticStateOverrides.position_last_browser_value = currentPos;
 
     // Optimistic update: immediately send to Deskthing
     if (this.currentPlayer) {
