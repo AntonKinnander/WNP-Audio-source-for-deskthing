@@ -21,11 +21,16 @@ export class MediaStore {
   private lastSongData: SongData11 | null = null;
 
   // Optimistic state overrides (immediate UI feedback, prevents stale-data flash)
+  // Each field has its own timestamp for independent timeout tracking
   private optimisticStateOverrides: {
     shuffle_active?: boolean;
+    shuffle_active_timestamp?: number;
     repeat_mode?: WNPRepeatMode;
+    repeat_mode_timestamp?: number;
     volume?: number;
+    volume_timestamp?: number;
     position_seconds?: number;
+    position_seconds_timestamp?: number;
   } = {};
 
   // Play/pause: skip sending updates for 500ms to prevent UI flash
@@ -111,41 +116,77 @@ export class MediaStore {
     const suppressSend = Date.now() < this.suppressSendUntil;
 
     // --- Optimistic state reconciliation ---
-    // Clear overrides when browser confirms our predicted state
-    if (this.optimisticStateOverrides.shuffle_active !== undefined) {
-      if (player.shuffle_active === this.optimisticStateOverrides.shuffle_active) {
-        delete this.optimisticStateOverrides.shuffle_active;
-      }
-    }
-    if (this.optimisticStateOverrides.repeat_mode !== undefined) {
-      if (player.repeat_mode === this.optimisticStateOverrides.repeat_mode) {
-        delete this.optimisticStateOverrides.repeat_mode;
-      }
-    }
+    // Each field has independent timeout (2000ms) and exact-match confirmation
+    const now = Date.now();
+    const TIMEOUT = 2000;
+
+    // Start with a copy of the browser's data, then override where needed
+    const adjustedPlayer = { ...player };
+
+    // Volume override
     if (this.optimisticStateOverrides.volume !== undefined) {
-      if (player.volume === this.optimisticStateOverrides.volume) {
+      const elapsed = this.optimisticStateOverrides.volume_timestamp ? now - this.optimisticStateOverrides.volume_timestamp : Infinity;
+      if (elapsed > TIMEOUT) {
+        console.log(`MediaStore: ⏱️ Volume override timed out (${elapsed}ms), clearing`);
         delete this.optimisticStateOverrides.volume;
-      }
-    }
-    if (this.optimisticStateOverrides.position_seconds !== undefined) {
-      if (player.position_seconds === this.optimisticStateOverrides.position_seconds) {
-        delete this.optimisticStateOverrides.position_seconds;
+        delete this.optimisticStateOverrides.volume_timestamp;
+      } else if (player.volume === this.optimisticStateOverrides.volume) {
+        console.log(`MediaStore: ✅ Volume confirmed by browser (${player.volume}), clearing override`);
+        delete this.optimisticStateOverrides.volume;
+        delete this.optimisticStateOverrides.volume_timestamp;
+      } else {
+        console.log(`MediaStore: 🔒 Volume override: browser=${player.volume}, optimistic=${this.optimisticStateOverrides.volume} (${elapsed}ms old)`);
+        adjustedPlayer.volume = this.optimisticStateOverrides.volume;
       }
     }
 
-    // Apply remaining optimistic overrides to outgoing data
-    const adjustedPlayer = { ...player };
-    if (this.optimisticStateOverrides.shuffle_active !== undefined) {
-      adjustedPlayer.shuffle_active = this.optimisticStateOverrides.shuffle_active;
-    }
-    if (this.optimisticStateOverrides.repeat_mode !== undefined) {
-      adjustedPlayer.repeat_mode = this.optimisticStateOverrides.repeat_mode;
-    }
-    if (this.optimisticStateOverrides.volume !== undefined) {
-      adjustedPlayer.volume = this.optimisticStateOverrides.volume;
-    }
+    // Position override
     if (this.optimisticStateOverrides.position_seconds !== undefined) {
-      adjustedPlayer.position_seconds = this.optimisticStateOverrides.position_seconds;
+      const elapsed = this.optimisticStateOverrides.position_seconds_timestamp ? now - this.optimisticStateOverrides.position_seconds_timestamp : Infinity;
+      if (elapsed > TIMEOUT) {
+        console.log(`MediaStore: ⏱️ Position override timed out (${elapsed}ms), clearing`);
+        delete this.optimisticStateOverrides.position_seconds;
+        delete this.optimisticStateOverrides.position_seconds_timestamp;
+      } else if (Math.abs(player.position_seconds - this.optimisticStateOverrides.position_seconds) < 1) {
+        console.log(`MediaStore: ✅ Position confirmed by browser, clearing override`);
+        delete this.optimisticStateOverrides.position_seconds;
+        delete this.optimisticStateOverrides.position_seconds_timestamp;
+      } else {
+        console.log(`MediaStore: 🔒 Position override: browser=${player.position_seconds.toFixed(1)}s, optimistic=${this.optimisticStateOverrides.position_seconds.toFixed(1)}s (${elapsed}ms old)`);
+        adjustedPlayer.position_seconds = this.optimisticStateOverrides.position_seconds;
+      }
+    }
+
+    // Shuffle override
+    if (this.optimisticStateOverrides.shuffle_active !== undefined) {
+      const elapsed = this.optimisticStateOverrides.shuffle_active_timestamp ? now - this.optimisticStateOverrides.shuffle_active_timestamp : Infinity;
+      if (elapsed > TIMEOUT) {
+        console.log(`MediaStore: ⏱️ Shuffle override timed out (${elapsed}ms), clearing`);
+        delete this.optimisticStateOverrides.shuffle_active;
+        delete this.optimisticStateOverrides.shuffle_active_timestamp;
+      } else if (player.shuffle_active === this.optimisticStateOverrides.shuffle_active) {
+        console.log(`MediaStore: ✅ Shuffle confirmed by browser, clearing override`);
+        delete this.optimisticStateOverrides.shuffle_active;
+        delete this.optimisticStateOverrides.shuffle_active_timestamp;
+      } else {
+        adjustedPlayer.shuffle_active = this.optimisticStateOverrides.shuffle_active;
+      }
+    }
+
+    // Repeat override
+    if (this.optimisticStateOverrides.repeat_mode !== undefined) {
+      const elapsed = this.optimisticStateOverrides.repeat_mode_timestamp ? now - this.optimisticStateOverrides.repeat_mode_timestamp : Infinity;
+      if (elapsed > TIMEOUT) {
+        console.log(`MediaStore: ⏱️ Repeat override timed out (${elapsed}ms), clearing`);
+        delete this.optimisticStateOverrides.repeat_mode;
+        delete this.optimisticStateOverrides.repeat_mode_timestamp;
+      } else if (player.repeat_mode === this.optimisticStateOverrides.repeat_mode) {
+        console.log(`MediaStore: ✅ Repeat confirmed by browser, clearing override`);
+        delete this.optimisticStateOverrides.repeat_mode;
+        delete this.optimisticStateOverrides.repeat_mode_timestamp;
+      } else {
+        adjustedPlayer.repeat_mode = this.optimisticStateOverrides.repeat_mode;
+      }
     }
 
     // Store the current player data (raw, not adjusted) — always update
@@ -291,6 +332,7 @@ export class MediaStore {
 
       // Optimistic update: immediately reflect in UI
       this.optimisticStateOverrides.shuffle_active = requested;
+      this.optimisticStateOverrides.shuffle_active_timestamp = Date.now();
 
       if (this.currentPlayer) {
         const adjustedPlayer = { ...this.currentPlayer, shuffle_active: requested };
@@ -330,12 +372,26 @@ export class MediaStore {
    * @param volume - Volume level (0-100)
    */
   public handleVolume(volume: number): void {
+    console.log('');
+    console.log('═══════════════════════════════════════════════════════════');
     console.log('Control: VOLUME command received from Deskthing');
+    console.log('───────────────────────────────────────────────────────────');
     const clamped = Math.max(0, Math.min(100, Math.floor(volume)));
     this.optimisticStateOverrides.volume = clamped;
-    this.suppressSendUntil = Date.now() + 2000;
+    this.optimisticStateOverrides.volume_timestamp = Date.now();
+
+    // Optimistic update: immediately send to Deskthing
+    if (this.currentPlayer) {
+      const adjustedPlayer = { ...this.currentPlayer, volume: clamped };
+      const songData = wnpToSongData11(adjustedPlayer);
+      this.lastSongData = songData;
+      DeskThing.sendSong(songData);
+    }
+
     this.wnpServer.setVolume(clamped);
     console.log(`Control: Volume set to ${clamped}`);
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('');
   }
 
   /**
@@ -343,12 +399,26 @@ export class MediaStore {
    * @param positionMs - Position in milliseconds
    */
   public handleSeek(positionMs: number): void {
+    console.log('');
+    console.log('═══════════════════════════════════════════════════════════');
     console.log('Control: SEEK command received from Deskthing');
+    console.log('───────────────────────────────────────────────────────────');
     const positionSeconds = positionMs / 1000;
     this.optimisticStateOverrides.position_seconds = positionSeconds;
-    this.suppressSendUntil = Date.now() + 2000;
+    this.optimisticStateOverrides.position_seconds_timestamp = Date.now();
+
+    // Optimistic update: immediately send to Deskthing
+    if (this.currentPlayer) {
+      const adjustedPlayer = { ...this.currentPlayer, position_seconds: positionSeconds };
+      const songData = wnpToSongData11(adjustedPlayer);
+      this.lastSongData = songData;
+      DeskThing.sendSong(songData);
+    }
+
     this.wnpServer.seekTo(positionSeconds);
     console.log(`Control: Seeked to ${positionSeconds}s (${positionMs}ms)`);
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('');
   }
 
   /**
@@ -356,14 +426,27 @@ export class MediaStore {
    * @param amountMs - Amount to seek forward in milliseconds
    */
   public handleFastForward(amountMs: number): void {
+    console.log('');
+    console.log('═══════════════════════════════════════════════════════════');
     console.log('Control: FAST_FORWARD command received from Deskthing');
-    const currentPos = this.optimisticStateOverrides.position_seconds ??
-      this.currentPlayer?.position_seconds ?? 0;
+    console.log('───────────────────────────────────────────────────────────');
+    const currentPos = this.currentPlayer?.position_seconds ?? 0;
     const newPos = Math.max(0, currentPos + (amountMs / 1000));
     this.optimisticStateOverrides.position_seconds = newPos;
-    this.suppressSendUntil = Date.now() + 2000;
+    this.optimisticStateOverrides.position_seconds_timestamp = Date.now();
+
+    // Optimistic update: immediately send to Deskthing
+    if (this.currentPlayer) {
+      const adjustedPlayer = { ...this.currentPlayer, position_seconds: newPos };
+      const songData = wnpToSongData11(adjustedPlayer);
+      this.lastSongData = songData;
+      DeskThing.sendSong(songData);
+    }
+
     this.wnpServer.seekTo(newPos);
     console.log(`Control: Fast forward ${amountMs}ms → ${newPos}s`);
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('');
   }
 
   /**
@@ -371,14 +454,27 @@ export class MediaStore {
    * @param amountMs - Amount to rewind in milliseconds
    */
   public handleRewind(amountMs: number): void {
+    console.log('');
+    console.log('═══════════════════════════════════════════════════════════');
     console.log('Control: REWIND command received from Deskthing');
-    const currentPos = this.optimisticStateOverrides.position_seconds ??
-      this.currentPlayer?.position_seconds ?? 0;
+    console.log('───────────────────────────────────────────────────────────');
+    const currentPos = this.currentPlayer?.position_seconds ?? 0;
     const newPos = Math.max(0, currentPos - (amountMs / 1000));
     this.optimisticStateOverrides.position_seconds = newPos;
-    this.suppressSendUntil = Date.now() + 2000;
+    this.optimisticStateOverrides.position_seconds_timestamp = Date.now();
+
+    // Optimistic update: immediately send to Deskthing
+    if (this.currentPlayer) {
+      const adjustedPlayer = { ...this.currentPlayer, position_seconds: newPos };
+      const songData = wnpToSongData11(adjustedPlayer);
+      this.lastSongData = songData;
+      DeskThing.sendSong(songData);
+    }
+
     this.wnpServer.seekTo(newPos);
     console.log(`Control: Rewind ${amountMs}ms → ${newPos}s`);
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('');
   }
 
   /**
