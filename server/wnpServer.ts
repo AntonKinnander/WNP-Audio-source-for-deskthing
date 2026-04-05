@@ -348,6 +348,9 @@ export class WNPServer extends EventEmitter {
         if (value !== this.currentUpdate.title) {
           this.currentUpdate.title = value;
           hasUpdate = true;
+          // Reset lastEmittedState when title changes, so subsequent updates
+          // (like duration, position) will trigger a full refresh with activePlayerChanged
+          this.lastEmittedState = null;
         }
         break;
 
